@@ -1,0 +1,22 @@
+# Build artifacts
+android/.gradle/
+android/build/
+android/local.properties
+ios/Pods/
+ios/build/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+*.log
+
+# Expo
+.expo/

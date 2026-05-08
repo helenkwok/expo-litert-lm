@@ -1,0 +1,59 @@
+{
+  "name": "expo-litert-lm",
+  "version": "0.1.0",
+  "description": "Expo Modules bindings for Google AI Edge LiteRT-LM. On-device Gemma 4 / Gemma 3n inference with .litertlm and .task model formats. Companion to react-native-litert-lm (Nitro Modules).",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "tsc -p tsconfig.build.json"
+  },
+  "files": [
+    "android/build.gradle",
+    "android/src",
+    "ios/**/*.swift",
+    "src",
+    "lib",
+    "ExpoLitertLm.podspec",
+    "expo-module.config.json",
+    "LICENSE",
+    "README.md"
+  ],
+  "keywords": [
+    "expo",
+    "expo-modules",
+    "litert",
+    "litert-lm",
+    "gemma",
+    "gemma-4",
+    "gemma-3n",
+    "on-device",
+    "ai",
+    "llm",
+    "ml",
+    "android",
+    "ios",
+    "react-native"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/helenkwok/expo-litert-lm.git"
+  },
+  "author": "Helen Kwok",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/helenkwok/expo-litert-lm/issues"
+  },
+  "homepage": "https://github.com/helenkwok/expo-litert-lm#readme",
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "expo-modules-core": "^3.0.0",
+    "react-native": "^0.83.0",
+    "typescript": "^5.6.0"
+  }
+}
