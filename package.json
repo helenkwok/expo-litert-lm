@@ -1,6 +1,6 @@
 {
   "name": "expo-litert-lm",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Expo Modules bindings for Google AI Edge LiteRT-LM. On-device Gemma 4 / Gemma 3n inference with .litertlm and .task model formats. Companion to react-native-litert-lm (Nitro Modules).",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -46,9 +46,10 @@
   },
   "homepage": "https://github.com/helenkwok/expo-litert-lm#readme",
   "peerDependencies": {
-    "expo": "*",
-    "react": "*",
-    "react-native": "*"
+    "expo": ">=55.0.0",
+    "expo-modules-core": ">=2.0.0",
+    "react": ">=18.0.0",
+    "react-native": ">=0.74.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

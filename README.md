@@ -26,8 +26,15 @@ Both packages exist deliberately. Pick what fits your app.
 ## Install
 
 ```bash
-# Until the package is published to npm, install from git:
-npx expo install git+https://github.com/helenkwok/expo-litert-lm.git
+npx expo install expo-litert-lm
+```
+
+Or pin a specific version in `package.json`:
+
+```jsonc
+"dependencies": {
+  "expo-litert-lm": "^0.1.1"
+}
 ```
 
 Or as a local file dependency during development:
@@ -75,6 +82,24 @@ if (await isLiteRtAvailable()) {
 - Android 12 (API 31) or newer
 - A device with GPU support for best performance (e.g. Pixel 7+)
 - Models: `.litertlm` (LiteRT-LM) or `.task` (MediaPipe Tasks GenAI)
+
+## Security
+
+This package ships **zero JavaScript runtime dependencies** (`"dependencies": {}` in `package.json`). The Kotlin (Android) and Swift (iOS) sources don't pull anything beyond `litertlm-android` and standard Expo Modules core.
+
+If a vulnerability scanner (Snyk, npm audit, etc.) flags issues against this package, they're inherited from your app's **Expo build-tooling chain** — not runtime code we ship. Common examples as of 2026-05-10:
+
+| Flagged transitive | Lives in | Affects |
+|---|---|---|
+| `uuid@7` | `expo` → `@expo/config-plugins` → `xcode` | iOS plugin generation (build time) |
+| `postcss@8.4.x` | `expo` → `@expo/metro-config` | CSS handling for web builds |
+| `inflight@1.x` | `expo` → `@expo/cli` | Dev-server tooling |
+
+These are dev/build-tooling concerns inherited via the `expo` peer dep and will appear in any Expo project regardless of whether this package is installed. They cannot be remediated by us — only by upstream Expo.
+
+`peerDependencies` are pinned to `expo >=55.0.0`, `expo-modules-core >=2.0.0`, `react >=18.0.0`, `react-native >=0.74.0` (the floor we've actually tested against) so scanners resolve to the consumer's real Expo version rather than guessing.
+
+If you find a vulnerability in code this package actually ships (Kotlin / Swift / TS in `src/` and `lib/`), please open an issue.
 
 ## License
 
