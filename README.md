@@ -17,7 +17,7 @@ Native bridge for Expo SDK 56+ apps to load and run `.litertlm` and `.task` mode
 | Framework | Expo Modules | Nitro Modules + Expo plugin |
 | iOS LiteRT-LM | Scaffold only | Full |
 | Android API | 31+ (S) | 26+ |
-| MTP / speculative decoding | `ExperimentalFlags.enableSpeculativeDecoding` wired against v0.11.0 (propagation gap upstream as of 2026-05-08) | Not exposed |
+| MTP / speculative decoding | `ExperimentalFlags.enableSpeculativeDecoding` wired against v0.11.0; on-device `dlopen` blocked by upstream [LiteRT-LM#2211](https://github.com/google-ai-edge/LiteRT-LM/issues/2211) (prebuilt sampler `DT_NEEDED` bug) — architecture verified 2.01× lossless on Mac via mlx-vlm | Not exposed |
 | Audio encoder | Production use | iOS limited |
 | Multi-runtime | LiteRT-LM `.litertlm` + MediaPipe Tasks GenAI `.task` | LiteRT-LM only |
 
