@@ -1,7 +1,7 @@
 {
   "name": "expo-litert-lm",
-  "version": "0.1.2",
-  "description": "Expo Modules bindings for Google AI Edge LiteRT-LM. On-device Gemma 4 / Gemma 3n inference with .litertlm and .task model formats. Companion to react-native-litert-lm (Nitro Modules).",
+  "version": "0.2.0-dev.1",
+  "description": "Expo Modules bindings for on-device LLM inference. Android: Google's litert-lm-android (LiteRT-LM Engine + MediaPipe Tasks GenAI). iOS: vendored LiteRTLM-Swift wrapping the LiteRT-LM C API; MediaPipe Tasks GenAI available as opt-in MediaPipeFallback subspec. Supports .litertlm and .task model formats.",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "scripts": {
