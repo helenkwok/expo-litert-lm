@@ -23,6 +23,10 @@ Native bridge for Expo SDK 56+ apps to load and run `.litertlm` and `.task` mode
 
 Both packages exist deliberately. Pick what fits your app.
 
+## Development Toolchain
+
+This module's iOS path requires **Xcode 16.4+** and **CocoaPods 1.10+**. The consumer app `offlineaid` pins specific versions via `.tool-versions` at its repo root (Phase 14 lockdown). If you're integrating `expo-litert-lm` into a different consumer, mirror that pin or install `asdf` + the [`klaaspieter/asdf-xcode`](https://github.com/klaaspieter/asdf-xcode) plugin and run `asdf install` against an equivalent `.tool-versions`. See `repositories/offlineaid/.tool-versions` for the canonical values.
+
 ## Install
 
 ```bash
