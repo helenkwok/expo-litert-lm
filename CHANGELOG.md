@@ -25,3 +25,4 @@
 ## 0.1.0
 
 - feat: initial expo-litert-lm — Expo Modules bindings for LiteRT-LM.
+2026-05-16 — synced rewrapped LiteRTLM-Swift v0.10.2+rewrap.1 (2 xcframeworks, first sha256: 10565a593a70...)

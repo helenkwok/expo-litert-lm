@@ -1,6 +1,6 @@
 {
   "name": "expo-litert-lm",
-  "version": "0.2.0-dev.1",
+  "version": "0.2.0-litertlm.0.10.2.r1",
   "description": "Expo Modules bindings for on-device LLM inference. Android: Google's litert-lm-android (LiteRT-LM Engine + MediaPipe Tasks GenAI). iOS: vendored LiteRTLM-Swift wrapping the LiteRT-LM C API; MediaPipe Tasks GenAI available as opt-in MediaPipeFallback subspec. Supports .litertlm and .task model formats.",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",

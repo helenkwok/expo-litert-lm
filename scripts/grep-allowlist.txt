@@ -3,14 +3,23 @@
 # These patterns exempt known-legitimate references to raw LiteRTLM.xcframework
 # from the grep gate that would otherwise reject them.
 #
-# Format: each pattern is matched against grep -nE output (path:linenum:content).
-# A hit that matches ANY pattern here is considered allowed and excluded from failures.
+# Format: each pattern is matched against grep -rnE output, which prepends
+# `./` to every path. Anchor with `^\./` to match the path component.
 
-# sync script reads the manifest which references the canonical xcframework name
-^scripts/sync-litertlm-swift\.sh:
+# Sync script narrates the canonical xcframework name in comments
+^\./scripts/sync-litertlm-swift\.sh:
+
+# The verify script itself prints messages mentioning the raw filename
+^\./scripts/verify-consumption\.sh:
 
 # The allowlist file itself documents what we're guarding against
-^scripts/grep-allowlist\.txt:
+^\./scripts/grep-allowlist\.txt:
 
 # CHANGELOG references historical filenames as context
-^CHANGELOG\.md:
+^\./CHANGELOG\.md:
+
+# Podspec comments narrate the rewrap policy (does not vendor raw path)
+^\./ExpoLitertLm\.podspec:
+
+# README narrates the consumer model
+^\./README\.md:

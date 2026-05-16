@@ -266,9 +266,20 @@ PODFILE_EOF
 }
 PBXPROJ_EOF
 
+  # Propagate the project's pinned CocoaPods version into the tmpdir so asdf's
+  # shim resolves correctly. The tmpdir lives outside the repo, so asdf can't
+  # find a parent `.tool-versions` and would otherwise error with
+  # "No version is set for command pod". ASDF_COCOAPODS_VERSION wins over
+  # `.tool-versions` lookup so we don't have to materialize a file.
+  COCOAPODS_VER="$(awk '/^cocoapods /{print $2; exit}' "$REPO_ROOT/.tool-versions" 2>/dev/null || true)"
+
   cd "$CONSUMER_DIR/ios"
   set +e
-  pod install 2>&1
+  if [ -n "$COCOAPODS_VER" ]; then
+    ASDF_COCOAPODS_VERSION="$COCOAPODS_VER" pod install 2>&1
+  else
+    pod install 2>&1
+  fi
   POD_EXIT=$?
   set -e
   cd "$REPO_ROOT"
