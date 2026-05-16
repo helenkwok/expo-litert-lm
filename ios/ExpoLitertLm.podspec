@@ -19,7 +19,7 @@ require "json"
 begin
   # Manifest lives next to the xcframeworks under Frameworks/, i.e. siblings
   # of this podspec.
-  manifest_path = File.expand_path("Frameworks/rewrap-manifest.json", __dir__)
+  manifest_path = File.expand_path("BinaryPods/Frameworks/rewrap-manifest.json", __dir__)
   raise "rewrap-manifest.json missing at #{manifest_path} — run `make sync TAG=v<upstream>+rewrap.<n>` first (Phase 14 D-34)" unless File.exist?(manifest_path)
 
   rewrap_manifest = JSON.parse(File.read(manifest_path))
@@ -87,20 +87,32 @@ Pod::Spec.new do |s|
   s.subspec "Core" do |c|
     c.dependency "ExpoModulesCore"
 
+    # Phase 14-09 Task 2: xcframeworks moved to top-level binary pods to work
+    # around CocoaPods #11948 (vendored_frameworks on a subspec silently
+    # dropped under static linkage). Discovered by the consumer's Podfile via
+    # the expo-litert-lm config plugin (app.plugin.js); declared here as
+    # Core-subspec dependencies so the linker resolves CLiteRTLM + GMCP
+    # symbols at compile time.
+    #
+    # Note: vendored_paths is still computed above (Layer C manifest validation
+    # still runs — we want the build to fail loudly if Frameworks/ is missing
+    # or stale) but is no longer assigned to c.vendored_frameworks here.
+    c.dependency "CLiteRTLMBinary"
+    c.dependency "GemmaModelConstraintProviderBinary"
+
     # Source files glob: this podspec sits in ios/, so "**/*.{h,m,mm,swift}"
     # matches everything under ios/ — including Sources/LiteRTLMSwift/ vendored
     # Swift modules.
     c.source_files  = "**/*.{h,m,mm,swift}"
     # Exclusions (relative to ios/):
     #  - MediaPipeFallback/**: opt-in subspec sources kept out of default compile.
-    #  - Frameworks/**: prevents the source_files glob from scooping up C headers
-    #    inside vendored xcframeworks (CLiteRTLM.framework ships engine.h +
-    #    litert_lm_logging.h in its Headers/ dir) which would otherwise be
-    #    exposed in the pod umbrella header and break import resolution.
-    c.exclude_files = ["MediaPipeFallback/**/*", "Frameworks/**/*"]
-
-    # vendored_frameworks paths are relative to THIS podspec's directory (ios/).
-    c.vendored_frameworks = vendored_paths
+    #  - BinaryPods/**: prevents the source_files glob from scooping up C
+    #    headers inside vendored xcframeworks (CLiteRTLM.framework ships
+    #    engine.h + litert_lm_logging.h in its Headers/ dir) which would
+    #    otherwise be exposed in the pod umbrella header and break import
+    #    resolution. Frameworks now live under BinaryPods/Frameworks/ —
+    #    Phase 14-09 Task 2.
+    c.exclude_files = ["MediaPipeFallback/**/*", "BinaryPods/**/*"]
 
     c.pod_target_xcconfig = {
       "DEFINES_MODULE"            => "YES",

@@ -1,4 +1,0 @@
-framework module CLiteRTLM {
-    header "engine.h"
-    export *
-}
