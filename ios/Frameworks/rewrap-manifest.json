@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "upstream_version": "v0.7.3",
+  "rewrap_iteration": 1,
+  "tag": "v0.7.3+rewrap.1",
+  "fork_sha": "pending",
+  "rewrap_script_sha": "pending",
+  "built_at": "2026-05-16T00:00:00Z",
+  "xcframeworks": [
+    {
+      "name": "LiteRTLM-rewrapped.xcframework",
+      "swift_target_name": "LiteRTLMBinary",
+      "zip_filename": "LiteRTLM-rewrapped-v0.7.3+rewrap.1.xcframework.zip",
+      "zip_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "release_asset_url": "https://github.com/helenkwok/LiteRTLM-Swift/releases/download/v0.7.3+rewrap.1/LiteRTLM-rewrapped-v0.7.3+rewrap.1.xcframework.zip",
+      "install_names": [
+        "@rpath/CLiteRTLM.framework/CLiteRTLM",
+        "@rpath/LiteRTLM.framework/LiteRTLM"
+      ]
+    },
+    {
+      "name": "GemmaModelConstraintProvider.xcframework",
+      "swift_target_name": "GemmaModelConstraintProviderBinary",
+      "zip_filename": "GemmaModelConstraintProvider-v0.7.3+rewrap.1.xcframework.zip",
+      "zip_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "release_asset_url": "https://github.com/helenkwok/LiteRTLM-Swift/releases/download/v0.7.3+rewrap.1/GemmaModelConstraintProvider-v0.7.3+rewrap.1.xcframework.zip",
+      "install_names": [
+        "@rpath/GemmaModelConstraintProvider.framework/GemmaModelConstraintProvider"
+      ]
+    }
+  ]
+}

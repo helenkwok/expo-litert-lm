@@ -2,6 +2,12 @@
 
 ## 0.2.0-dev.1 — Phase 14 (in progress, 2026-05-15)
 
+- **Changed:** `scripts/sync-litertlm-swift.sh` rewritten — now fetches rewrapped LiteRTLM-Swift from `helenkwok/LiteRTLM-Swift`'s GitHub Release by tag, verifies SHA-256 against `rewrap-manifest.json`, places artifacts under `ios/Frameworks/`. Manual sync per Phase 14 D-34. Run `make sync TAG=v<upstream>+rewrap.<n>`.
+- **Added:** `ios/Frameworks/rewrap-manifest.json` — trust anchor (source-controlled JSON, populated by sync script). xcframework binaries remain gitignored.
+- **Added:** `ExpoLitertLm.podspec` now reads `vendored_frameworks` and `s.version` from `ios/Frameworks/rewrap-manifest.json` via Ruby `JSON.parse` at install time. Phase 14 D-31 single source of truth.
+- **Added:** Layer A/B/C verification gates (`scripts/verify-consumption.sh`, `make verify`). Layer A = pod install from fresh consumer; Layer B = grep gate for raw xcframework refs; Layer C = manifest-driven podspec consistency.
+- **Added:** `.github/workflows/verify-consumption.yml` — CI mirrors fork's three-layer gate on macos-latest.
+
 - **BREAKING:** iOS path migrated from `MediaPipeTasksGenAI` default-dep to vendored `LiteRTLM-Swift` (`CLiteRTLM.xcframework` + `GemmaModelConstraintProvider.xcframework`). Consumers must run `pod install` after upgrade.
 - **BREAKING:** `ExpoLitertLm.podspec` no longer carries `static_framework = true` — see CocoaPods issue [#11948](https://github.com/CocoaPods/CocoaPods/issues/11948) + offlineaid Phase 14 CONTEXT D-21. Static linkage of a dylib-containing xcframework crashes the host app at launch.
 - **BREAKING:** MediaPipe `.task` support moves to opt-in `MediaPipeFallback` subspec; default install does not include `MediaPipeTasksGenAI` on iOS. Consumers who need it: `pod 'ExpoLitertLm', :subspecs => ['Core', 'MediaPipeFallback']` in their Podfile.

@@ -1,0 +1,8 @@
+# LiteRTLM xcframework binaries are gitignored — they are large platform binaries
+# fetched at sync time via scripts/sync-litertlm-swift.sh.
+# Use `make sync TAG=<tag>` to populate this directory.
+*.xcframework
+
+# The manifest is the trust anchor and MUST be checked into source control.
+# It is populated by scripts/sync-litertlm-swift.sh after SHA-256 verification.
+!rewrap-manifest.json

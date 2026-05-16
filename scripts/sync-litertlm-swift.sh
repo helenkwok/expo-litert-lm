@@ -1,74 +1,131 @@
 #!/usr/bin/env bash
 # sync-litertlm-swift.sh
-# Manual sync from helenkwok/LiteRTLM-Swift fork into vendored copies under
-# expo-litert-lm/ios/. Pulls the source xcframework + Swift sources, runs the
-# fork's scripts/rewrap-xcframework.sh, and copies the rewrapped outputs into
-# place. Version bumps and CHANGELOG entries are manual per offlineaid D-16.
+# Fetches rewrapped LiteRTLM-Swift xcframeworks from the fork's GitHub Release
+# by tag, verifies SHA-256 against rewrap-manifest.json, places artifacts
+# under ios/Frameworks/, bumps package.json version, copies manifest.
+#
+# Manual sync only — this script does NOT auto-commit. Operator reviews and
+# commits explicitly: ios/Frameworks/rewrap-manifest.json + package.json +
+# CHANGELOG.md. Do NOT commit the .xcframework binaries (gitignored).
+#
+# Requires: gh CLI authenticated as a user with read access to helenkwok/LiteRTLM-Swift
+# Requires: jq, shasum (macOS), npm (for version bump), unzip
 #
 # Usage:
-#   scripts/sync-litertlm-swift.sh [REF]                 # clone fork at REF (default: main)
-#   LITERTLM_SWIFT_LOCAL_PATH=/path scripts/sync-litertlm-swift.sh  # use local fork checkout
+#   scripts/sync-litertlm-swift.sh <tag>
+#   e.g. scripts/sync-litertlm-swift.sh v0.7.3+rewrap.1
+#
+# Phase 14 D-34, D-35
 
 set -euo pipefail
 
-REF="${1:-main}"
+TAG="${1:-}"
+[ -n "$TAG" ] || { echo "usage: $0 <tag>  (e.g. v0.7.3+rewrap.1)" >&2; exit 1; }
+
+REPO="helenkwok/LiteRTLM-Swift"
+DEST="ios/Frameworks"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PKG_VERSION="$(node -p "require('${ROOT}/package.json').version")"
-export LITERTLM_VERSION="${PKG_VERSION%-*}"   # strip any -dev.N suffix for the xcframework Info.plist
-export LITERTLM_BUILD="1"
+cd "$ROOT"
 
-echo "==> Sync helenkwok/LiteRTLM-Swift -> expo-litert-lm/ios/ (ref=${REF}, version=${LITERTLM_VERSION})"
+echo "==> Syncing LiteRTLM-Swift $TAG from $REPO into $DEST/"
 
-# 1. Resolve fork source (clone or local path)
-if [ -n "${LITERTLM_SWIFT_LOCAL_PATH:-}" ]; then
-  FORK_DIR="$LITERTLM_SWIFT_LOCAL_PATH"
-  if [ ! -d "$FORK_DIR" ]; then
-    echo "ERROR: LITERTLM_SWIFT_LOCAL_PATH=$FORK_DIR does not exist" >&2
+# 1. Fetch manifest FIRST — it is the trust anchor for ALL xcframeworks.
+#    Paying manifest bandwidth before xcframework bandwidth allows SHA verification
+#    before downloading the (large) xcframework zips.
+tmpdir=$(mktemp -d)
+trap "rm -rf $tmpdir" EXIT
+
+echo "  Fetching rewrap-manifest.json..."
+gh release download "$TAG" --repo "$REPO" --pattern 'rewrap-manifest.json' --dir "$tmpdir"
+manifest="$tmpdir/rewrap-manifest.json"
+
+schema_version=$(jq -r .schema_version "$manifest")
+[ "$schema_version" = "1" ] || {
+  echo "FAIL: unexpected manifest schema_version=$schema_version (expected 1)" >&2
+  exit 1
+}
+
+count=$(jq '.xcframeworks | length' "$manifest")
+[ "$count" -ge 2 ] || {
+  echo "FAIL: manifest.xcframeworks has $count entries, expected >=2 (LiteRTLM-rewrapped + GemmaModelConstraintProvider)" >&2
+  exit 1
+}
+
+echo "  Manifest OK: schema_version=$schema_version, $count xcframeworks"
+
+# 2. For EACH xcframework entry: fetch zip, verify SHA-256, unzip into DEST.
+mkdir -p "$DEST"
+
+jq -c '.xcframeworks[]' "$manifest" | while read -r entry; do
+  name=$(echo "$entry"         | jq -r .name)
+  zip_filename=$(echo "$entry" | jq -r .zip_filename)
+  expected_sha=$(echo "$entry" | jq -r .zip_sha256)
+
+  # Validate expected sha is 64-hex (guards against manifest with placeholder)
+  if ! [[ "$expected_sha" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "FAIL: manifest entry '$name' has non-hex zip_sha256: '$expected_sha'" >&2
     exit 1
   fi
-  echo "==> Using local fork: $FORK_DIR"
-  CLEANUP=""
-else
-  TMP="$(mktemp -d)"
-  FORK_DIR="$TMP/fork"
-  echo "==> Cloning helenkwok/LiteRTLM-Swift @ ${REF} into $FORK_DIR"
-  git clone --depth 1 --branch "$REF" \
-    https://github.com/helenkwok/LiteRTLM-Swift.git "$FORK_DIR"
-  CLEANUP="$TMP"
-fi
 
-# 2. Run the fork's rewrap script (idempotent — emits sibling -rewrapped + GMCP xcframeworks)
-(cd "$FORK_DIR" && ./scripts/rewrap-xcframework.sh Frameworks/LiteRTLM.xcframework >/dev/null)
+  echo "  Fetching $zip_filename..."
+  gh release download "$TAG" --repo "$REPO" --pattern "$zip_filename" --dir "$tmpdir"
 
-REWRAPPED="$FORK_DIR/Frameworks/LiteRTLM-rewrapped.xcframework"
-GMCP="$FORK_DIR/Frameworks/GemmaModelConstraintProvider.xcframework"
+  actual_sha=$(shasum -a 256 "$tmpdir/$zip_filename" | awk '{print $1}')
+  if [ "$actual_sha" != "$expected_sha" ]; then
+    echo "FAIL: sha256 mismatch for $name" >&2
+    echo "  expected: $expected_sha" >&2
+    echo "  actual:   $actual_sha" >&2
+    exit 1
+  fi
 
-[ -d "$REWRAPPED" ] || { echo "ERROR: rewrap did not produce $REWRAPPED" >&2; exit 1; }
-[ -d "$GMCP" ] || { echo "ERROR: rewrap did not produce $GMCP" >&2; exit 1; }
+  echo "  ✓ $name sha256 verified (${expected_sha:0:12}...)"
 
-# 3. Stage vendored copies
-DEST_FW="$ROOT/ios/Frameworks"
-DEST_SRC="$ROOT/ios/Sources"
-mkdir -p "$DEST_FW" "$DEST_SRC"
+  # Remove existing xcframework if present, then unzip
+  rm -rf "$DEST/$name"
+  unzip -q "$tmpdir/$zip_filename" -d "$DEST"
 
-# Drop the -rewrapped suffix so podspec references stay clean (D-15 — vendored
-# copy is authoritative).
-rm -rf "$DEST_FW/CLiteRTLM.xcframework" "$DEST_FW/GemmaModelConstraintProvider.xcframework"
-cp -R "$REWRAPPED" "$DEST_FW/CLiteRTLM.xcframework"
-cp -R "$GMCP" "$DEST_FW/GemmaModelConstraintProvider.xcframework"
+  if [ ! -d "$DEST/$name" ]; then
+    echo "FAIL: expected $DEST/$name after unzip of $zip_filename" >&2
+    echo "  Contents of $DEST after unzip:" >&2
+    ls "$DEST/" >&2
+    exit 1
+  fi
 
-rm -rf "$DEST_SRC/LiteRTLMSwift"
-cp -R "$FORK_DIR/Sources/LiteRTLMSwift" "$DEST_SRC/LiteRTLMSwift"
+  echo "  ✓ $name installed at $DEST/$name"
+done
 
-# 4. Tree summary
+# 3. Copy manifest into source-controlled location (single SoT on Pod side).
+#    The manifest is the trust anchor and MUST be checked into source control.
+#    The xcframework binaries are gitignored.
+cp "$manifest" "$DEST/rewrap-manifest.json"
+echo "  ✓ rewrap-manifest.json written to $DEST/rewrap-manifest.json"
+
+# 4. Bump package.json version (per D-35, D-16).
+upstream_ver=$(jq -r .upstream_version "$manifest")
+rewrap_iter=$(jq -r .rewrap_iteration "$manifest")
+# e.g. 0.2.0-litertlm.0.7.3.r1
+new_pkg_ver="0.2.0-litertlm.${upstream_ver#v}.r${rewrap_iter}"
+echo "  Bumping package.json version to $new_pkg_ver..."
+npm version "$new_pkg_ver" --no-git-tag-version
+
+# 5. Append CHANGELOG entry
+first_sha=$(jq -r '.xcframeworks[0].zip_sha256' "$manifest")
+date_str=$(date -u +"%Y-%m-%d")
+echo "${date_str} — synced rewrapped LiteRTLM-Swift $TAG ($count xcframeworks, first sha256: ${first_sha:0:12}...)" >> CHANGELOG.md
+echo "  ✓ CHANGELOG.md updated"
+
 echo ""
-echo "==> Vendored copy summary:"
-find "$DEST_FW" "$DEST_SRC" -maxdepth 3 -type d | sed "s|$ROOT/||"
+echo "==> Sync complete."
 echo ""
-du -sh "$DEST_FW"/*.xcframework "$DEST_SRC/LiteRTLMSwift" 2>/dev/null
-
-# 5. Cleanup temp clone
-[ -n "$CLEANUP" ] && rm -rf "$CLEANUP"
-
+echo "Files to COMMIT (manual review first):"
+echo "  $DEST/rewrap-manifest.json  (trust anchor — MUST be committed)"
+echo "  package.json                (version bumped to $new_pkg_ver)"
+echo "  CHANGELOG.md                (sync entry added)"
 echo ""
-echo "REMINDER: bump package.json version + add CHANGELOG entry before publishing — see offlineaid CONTEXT D-16."
+echo "Files to NOT COMMIT (gitignored binaries):"
+jq -r '.xcframeworks[].name' "$manifest" | while read -r xcf; do
+  echo "  $DEST/$xcf"
+done
+echo ""
+echo "Suggested commit message:"
+echo "  chore(sync): rewrapped LiteRTLM-Swift $TAG ($count xcframeworks)"
