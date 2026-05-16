@@ -1,0 +1,6 @@
+# The xcframeworks are gitignored but must be published to npm; consumers need
+# them during CocoaPods install.
+!.gitignore
+!*.xcframework
+!*.xcframework/**
+!rewrap-manifest.json

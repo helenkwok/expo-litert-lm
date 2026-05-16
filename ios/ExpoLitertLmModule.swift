@@ -33,6 +33,7 @@ public final class ExpoLitertLmModule: Module {
   private var loadedRuntime: LoadedRuntime?
   private var loadedConfig: LiteRtLoadConfig?
   private var loadedModelPath: String?
+  private var securityScopedModelURL: URL?
 
   private let stateQueue = DispatchQueue(label: "expo.modules.litertlm.state")
   private var activeGenerationID: UUID?
@@ -65,9 +66,11 @@ public final class ExpoLitertLmModule: Module {
       try self.ensureSupportedOS()
 
       let resolvedBackend = (preferredBackend ?? "cpu").lowercased()
+      let modelURL = try Self.resolveModelURL(modelPath)
+      let resolvedModelPath = modelURL.path
       let nextConfig = LiteRtLoadConfig(
         maxTokens: maxTokens,
-        modelPath: modelPath,
+        modelPath: resolvedModelPath,
         preferredBackend: resolvedBackend,
         temperature: temperature,
         topK: topK
@@ -77,14 +80,17 @@ public final class ExpoLitertLmModule: Module {
       if self.loadedConfig == nextConfig, self.loadedRuntime != nil {
         return [
           "backend": resolvedBackend,
-          "modelPath": modelPath,
+          "modelPath": resolvedModelPath,
         ]
       }
 
       self.cancelActiveGeneration()
       await self.unloadInternalAsync()
 
-      if Self.isLiteRtLmModelPath(modelPath) {
+      let didStartSecurityScope = modelURL.startAccessingSecurityScopedResource()
+      var shouldStopSecurityScopeOnExit = didStartSecurityScope
+
+      if Self.isLiteRtLmModelPath(resolvedModelPath) {
         // LiteRTLM-Swift path — default for `.litertlm` models.
         // textOnly: true is REQUIRED for the v1.1 floor-device model
         // (gemma3-1b-it-int4.litertlm has no vision/audio encoders). Stage A
@@ -93,13 +99,16 @@ public final class ExpoLitertLmModule: Module {
         // Expo Modules consumer. Multimodal Gemma 4 callers must set this
         // to false explicitly when that path is wired (Phase 16).
         let engine = LiteRTLMEngine(
-          modelPath: URL(fileURLWithPath: modelPath),
+          modelPath: modelURL,
           backend: resolvedBackend,
           textOnly: true
         )
         do {
           try await engine.load()
         } catch {
+          if shouldStopSecurityScopeOnExit {
+            modelURL.stopAccessingSecurityScopedResource()
+          }
           throw LiteRtModuleError(
             message: self.message(from: error, fallback: "LiteRT model loading failed.")
           )
@@ -114,13 +123,16 @@ public final class ExpoLitertLmModule: Module {
         let engine = MediaPipeFallbackEngine()
         do {
           try engine.load(
-            modelPath: modelPath,
+            modelPath: resolvedModelPath,
             maxTokens: maxTokens,
             topK: topK,
             temperature: temperature,
             preferredBackend: resolvedBackend
           )
         } catch {
+          if shouldStopSecurityScopeOnExit {
+            modelURL.stopAccessingSecurityScopedResource()
+          }
           throw LiteRtModuleError(
             message: self.message(from: error, fallback: "MediaPipe model loading failed.")
           )
@@ -128,6 +140,9 @@ public final class ExpoLitertLmModule: Module {
         self.mediaPipeFallback = engine
         self.loadedRuntime = .mediaPipe
         #else
+        if shouldStopSecurityScopeOnExit {
+          modelURL.stopAccessingSecurityScopedResource()
+        }
         throw LiteRtModuleError(
           message: ".task models require the MediaPipeFallback subspec. Add `pod 'ExpoLitertLm', :subspecs => ['Core', 'MediaPipeFallback']` to your Podfile per ExpoLitertLm CHANGELOG v0.2.0."
         )
@@ -135,11 +150,15 @@ public final class ExpoLitertLmModule: Module {
       }
 
       self.loadedConfig = nextConfig
-      self.loadedModelPath = modelPath
+      self.loadedModelPath = resolvedModelPath
+      if didStartSecurityScope {
+        self.securityScopedModelURL = modelURL
+        shouldStopSecurityScopeOnExit = false
+      }
 
       return [
         "backend": resolvedBackend,
-        "modelPath": modelPath,
+        "modelPath": resolvedModelPath,
       ]
     }
 
@@ -225,6 +244,25 @@ public final class ExpoLitertLmModule: Module {
 
   private static func isLiteRtLmModelPath(_ modelPath: String) -> Bool {
     (modelPath as NSString).pathExtension.lowercased() == "litertlm"
+  }
+
+  private static func resolveModelURL(_ modelPath: String) throws -> URL {
+    if modelPath.lowercased().hasPrefix("file://") {
+      if let url = URL(string: modelPath), url.isFileURL {
+        return url
+      }
+
+      let pathWithoutScheme = String(modelPath.dropFirst("file://".count))
+      return URL(fileURLWithPath: pathWithoutScheme.removingPercentEncoding ?? pathWithoutScheme)
+    }
+
+    if modelPath.contains("://") {
+      throw LiteRtModuleError(
+        message: "LiteRT models must be loaded from a local path or file:// URL."
+      )
+    }
+
+    return URL(fileURLWithPath: modelPath)
   }
 
   // MARK: - LiteRTLM-Swift generation
@@ -321,6 +359,10 @@ public final class ExpoLitertLmModule: Module {
     loadedRuntime = nil
     loadedConfig = nil
     loadedModelPath = nil
+    if let url = securityScopedModelURL {
+      url.stopAccessingSecurityScopedResource()
+      securityScopedModelURL = nil
+    }
   }
 
   private func emitTokenEvent(text: String, delta: String, done: Bool) async {

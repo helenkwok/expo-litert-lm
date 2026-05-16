@@ -63,12 +63,17 @@ export default function App() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cancelTsRef = useRef<number | null>(null);
 
+  const finishCancelLatency = () => {
+    if (cancelTsRef.current === null) return;
+    setCancelLatencyMs(Date.now() - cancelTsRef.current);
+    cancelTsRef.current = null;
+  };
+
   useEffect(() => {
     const sub = addLiteRtTokenListener((event: LiteRtTokenEvent) => {
       setOutput(event.text);
       if (cancelTsRef.current !== null && event.done) {
-        setCancelLatencyMs(Date.now() - cancelTsRef.current);
-        cancelTsRef.current = null;
+        finishCancelLatency();
       }
     });
     return () => sub.remove();
@@ -83,10 +88,9 @@ export default function App() {
     if (res.canceled) return;
     const uri = res.assets?.[0]?.uri;
     if (uri) {
-      // Native module's URL(fileURLWithPath:) treats its arg as POSIX path,
-      // so a file:// scheme prefix breaks fileExists. Strip it for Stage B.
-      // Phase 14-09 follow-up: native module should accept either form.
-      setModelPath(uri.startsWith('file://') ? uri.replace(/^file:\/\//, '') : uri);
+      // Keep the picker URI intact so the native module exercises its
+      // file:// URL normalization path.
+      setModelPath(uri);
     }
   };
 
@@ -139,6 +143,7 @@ export default function App() {
     } catch (e) {
       setErrorText(e instanceof Error ? e.message : String(e));
     } finally {
+      finishCancelLatency();
       await stopPollingAndWrite();
       setRunning(false);
     }

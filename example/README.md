@@ -38,7 +38,8 @@ LiteRTLM-rewrapped.xcframework via the `file:..` link to the parent module.
    A 250 ms `sampleMemoryAsync` poll updates the on-screen MB and peakMb labels.
 3. Run finishes after ~50 s; final peakMb is the gate value.
 4. Re-tap **Run spike**, then **Cancel** mid-stream — verifies IOSC-03
-   cancellation latency from the JS surface.
+   cancellation latency from the JS surface. The app records latency even
+   when native cancellation ends before a final token event is emitted.
 5. Retrieve `rss-stageB-*.ndjson` from Xcode → Devices → expolitertlmexample
    → Download Container → AppData/Documents.
 
@@ -49,3 +50,8 @@ LiteRTLM-rewrapped.xcframework via the `file:..` link to the parent module.
 - No audio / vision surface. Phase 14 spike scope is chat-only (D-02).
 - No model download from JS. Files-app-copy keeps the harness deterministic
   and the example free of HF auth code.
+
+## Notes
+
+- The picker passes its raw `file://` URI into `loadLiteRtModel`; the native
+  iOS module accepts both picker URIs and POSIX paths.
