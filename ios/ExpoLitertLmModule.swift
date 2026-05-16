@@ -86,9 +86,16 @@ public final class ExpoLitertLmModule: Module {
 
       if Self.isLiteRtLmModelPath(modelPath) {
         // LiteRTLM-Swift path — default for `.litertlm` models.
+        // textOnly: true is REQUIRED for the v1.1 floor-device model
+        // (gemma3-1b-it-int4.litertlm has no vision/audio encoders). Stage A
+        // discovered this in 14-06 (fork@93d35e0 → added textOnly param);
+        // 14-07 surfaced that the param wasn't being threaded through the
+        // Expo Modules consumer. Multimodal Gemma 4 callers must set this
+        // to false explicitly when that path is wired (Phase 16).
         let engine = LiteRTLMEngine(
           modelPath: URL(fileURLWithPath: modelPath),
-          backend: resolvedBackend
+          backend: resolvedBackend,
+          textOnly: true
         )
         do {
           try await engine.load()

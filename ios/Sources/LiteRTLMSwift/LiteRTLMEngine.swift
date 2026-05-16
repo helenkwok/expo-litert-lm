@@ -60,10 +60,15 @@ public final class LiteRTLMEngine: @unchecked Sendable {
     /// - Parameters:
     ///   - modelPath: Path to the `.litertlm` model file on disk.
     ///   - backend: Compute backend — `"cpu"` or `"gpu"` (GPU uses Metal on iOS).
-    public init(modelPath: URL, backend: String = "cpu") {
+    ///   - textOnly: If true, disable vision/audio encoders (required for
+    ///     text-only models like Gemma 3 1B that lack `TF_LITE_VISION_ENCODER`).
+    public init(modelPath: URL, backend: String = "cpu", textOnly: Bool = false) {
         self.modelPath = modelPath
         self.backend = backend
+        self.textOnly = textOnly
     }
+
+    private let textOnly: Bool
 
     deinit {
         let eng = engine
@@ -113,9 +118,10 @@ public final class LiteRTLMEngine: @unchecked Sendable {
                     do {
                         litert_lm_set_min_log_level(1)
 
-                        guard let settings = litert_lm_engine_settings_create(
-                            path, backendStr, backendStr, backendStr
-                        ) else {
+                        let createdSettings = self.textOnly
+                            ? litert_lm_engine_settings_create(path, backendStr, nil, nil)
+                            : litert_lm_engine_settings_create(path, backendStr, backendStr, backendStr)
+                        guard let settings = createdSettings else {
                             throw LiteRTLMError.engineCreationFailed("Failed to create engine settings")
                         }
 

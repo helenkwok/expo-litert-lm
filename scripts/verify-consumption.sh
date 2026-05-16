@@ -7,7 +7,12 @@
 # Run from repo root or via `make verify`.
 #
 # Layer A: `pod install` from fresh consumer in a temp dir + grep Podfile.lock
-# Layer B: static grep for raw LiteRTLM.xcframework refs without -rewrapped qualifier
+# Layer B: static grep for raw `LiteRTLM.xcframework` references — the upstream
+# raw artifact is not consumable on iOS (App Store notary issues; Phase 14 D-24).
+# The canonical rewrapped artifact is `CLiteRTLM.xcframework` (outer name matches
+# the inner framework binary so CocoaPods `-framework <basename>` resolves;
+# Phase 14-07 rewrap.2). Earlier iterations named the output
+# `LiteRTLM-rewrapped.xcframework` — also accepted as a transitional name.
 # Layer C: manifest-driven podspec consistency check
 #
 # Note on Layer A: requires ios/Frameworks/rewrap-manifest.json + the xcframework
@@ -50,7 +55,7 @@ else
     --include='*.swift' --include='*.json' --include='*.podspec' \
     --include='*.rb' --include='*.sh' --include='*.txt' \
     . 2>/dev/null \
-    | grep -v '\-rewrapped' || true)
+    | grep -vE '(CLiteRTLM|LiteRTLM-rewrapped)' || true)
 fi
 set -e
 
@@ -294,13 +299,13 @@ PBXPROJ_EOF
       echo "FAIL: Podfile.lock not generated after pod install" >&2
       ERRORS=$((ERRORS + 1))
     else
-      if ! grep -q 'LiteRTLM-rewrapped' "$PODFILE_LOCK"; then
-        echo "FAIL: Podfile.lock does not reference 'LiteRTLM-rewrapped'" >&2
+      if ! grep -qE '(CLiteRTLM|LiteRTLM-rewrapped)' "$PODFILE_LOCK"; then
+        echo "FAIL: Podfile.lock does not reference the rewrapped xcframework (CLiteRTLM or LiteRTLM-rewrapped)" >&2
         echo "  Podfile.lock contents:" >&2
         cat "$PODFILE_LOCK" >&2
         ERRORS=$((ERRORS + 1))
       else
-        echo "  PASS: Podfile.lock references LiteRTLM-rewrapped"
+        echo "  PASS: Podfile.lock references the rewrapped xcframework"
       fi
 
       # Assert NO MediaPipeTasksGenAI in default install (D-22 regression gate)

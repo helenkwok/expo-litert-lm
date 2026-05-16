@@ -12,9 +12,10 @@
     "android/build.gradle",
     "android/src",
     "ios/**/*.swift",
+    "ios/ExpoLitertLm.podspec",
+    "ios/Frameworks/rewrap-manifest.json",
     "src",
     "lib",
-    "ExpoLitertLm.podspec",
     "expo-module.config.json",
     "LICENSE",
     "README.md"

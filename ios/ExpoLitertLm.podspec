@@ -3,17 +3,23 @@ require "json"
 # =============================================================================
 # ExpoLitertLm.podspec — manifest-driven xcframework consumer
 # =============================================================================
-# ios/Frameworks/rewrap-manifest.json is the single source of truth for
-# the xcframework names, versions, and sha256 values. It is populated by
-# scripts/sync-litertlm-swift.sh (Phase 14 D-31, D-34).
+# Frameworks/rewrap-manifest.json (relative to THIS podspec, i.e. ios/) is the
+# single source of truth for xcframework names, versions, and sha256 values.
+# Populated by scripts/sync-litertlm-swift.sh (Phase 14 D-31, D-34).
 #
 # If the manifest is missing, pod install will fail with a clear message.
 # Run `make sync TAG=v<upstream>+rewrap.<n>` first.
+#
+# Phase 14-07: podspec relocated from package root to ios/ to satisfy Expo SDK
+# 55's autolinking convention. Without this, vendored_frameworks were silently
+# dropped from the Pods integration even when the resolved spec.json declared
+# them correctly.
 # =============================================================================
 
-# Layer C assertion: read the manifest and validate invariants at install time.
 begin
-  manifest_path = File.expand_path("ios/Frameworks/rewrap-manifest.json", __dir__)
+  # Manifest lives next to the xcframeworks under Frameworks/, i.e. siblings
+  # of this podspec.
+  manifest_path = File.expand_path("Frameworks/rewrap-manifest.json", __dir__)
   raise "rewrap-manifest.json missing at #{manifest_path} — run `make sync TAG=v<upstream>+rewrap.<n>` first (Phase 14 D-34)" unless File.exist?(manifest_path)
 
   rewrap_manifest = JSON.parse(File.read(manifest_path))
@@ -22,12 +28,11 @@ begin
   xcfws = rewrap_manifest["xcframeworks"] || []
   raise "manifest.xcframeworks must have >=2 entries, got #{xcfws.length} — re-run `make sync TAG=...`" unless xcfws.length >= 2
 
-  # Layer C assertion #1: the LiteRTLM xcframework MUST carry the '-rewrapped' qualifier.
-  # A future upstream slip-up (raw LiteRTLM.xcframework vendored without rewrap) will
-  # fail pod install loudly here rather than crashing silently at runtime.
-  litertlm_entry = xcfws.find { |x| x["name"].to_s.start_with?("LiteRTLM") }
+  # Layer C assertion #1: the LiteRTLM xcframework must be present; manifest
+  # must indicate rewrap_iteration >= 1 (raw upstream xcframework not accepted).
+  litertlm_entry = xcfws.find { |x| x["name"].to_s.match?(/\A(CLiteRTLM|LiteRTLM(-rewrapped)?)\.xcframework\z/) }
   raise "manifest has no LiteRTLM xcframework entry" unless litertlm_entry
-  raise "LiteRTLM entry name (#{litertlm_entry['name']}) must contain '-rewrapped' (raw upstream xcframework is not accepted)" unless litertlm_entry["name"].include?("-rewrapped")
+  raise "manifest rewrap_iteration must be >= 1 (raw upstream xcframework is not accepted)" unless rewrap_manifest["rewrap_iteration"].to_i >= 1
 
   # Layer C assertion #2: every entry must have a non-empty 64-hex sha256.
   xcfws.each do |x|
@@ -35,32 +40,29 @@ begin
     raise "xcframework #{x['name']} has missing/invalid zip_sha256 (#{sha.inspect}) — re-run `make sync TAG=...`" unless sha.match?(/\A[0-9a-f]{64}\z/)
   end
 
-  # Build vendored_frameworks array: ios/Frameworks/<name> for each entry
-  VENDORED_XCFRAMEWORKS = xcfws.map { |x| "ios/Frameworks/#{x['name']}" }.freeze
+  # Paths are relative to the podspec dir (ios/), so Frameworks/<name> resolves
+  # to ios/Frameworks/<name> from the package root.
+  vendored_paths = xcfws.map { |x| "Frameworks/#{x['name']}" }
 
-  # Derive version from manifest: <upstream_ver_without_v>.rewrap.<iteration>
   upstream_ver = rewrap_manifest["upstream_version"].to_s.sub(/^v/, "")
   rewrap_iter  = rewrap_manifest["rewrap_iteration"].to_s
-  MANIFEST_VERSION = "#{upstream_ver}.rewrap.#{rewrap_iter}".freeze
+  manifest_version = "#{upstream_ver}.rewrap.#{rewrap_iter}"
 
 rescue => e
-  # Provide an informative failure rather than a Ruby NoMethodError deep in the stack.
-  # pod lib lint will see this; `pod install` will also fail with a clear message.
   warn "[ExpoLitertLm] WARNING: could not read rewrap-manifest.json — #{e.message}"
-  VENDORED_XCFRAMEWORKS = [
-    "ios/Frameworks/LiteRTLM-rewrapped.xcframework",
-    "ios/Frameworks/GemmaModelConstraintProvider.xcframework",
-  ].freeze
-  MANIFEST_VERSION = "0.0.0-manifest-missing".freeze
+  vendored_paths = [
+    "Frameworks/CLiteRTLM.xcframework",
+    "Frameworks/GemmaModelConstraintProvider.xcframework",
+  ]
+  manifest_version = "0.0.0-manifest-missing"
 end
 
-package = JSON.parse(File.read(File.join(__dir__, "package.json")))
+# package.json sits at the package root, i.e. one level up from this podspec.
+package = JSON.parse(File.read(File.join(__dir__, "..", "package.json")))
 
 Pod::Spec.new do |s|
   s.name             = "ExpoLitertLm"
-  # Version derived from manifest (single SoT). Falls back to package.json version
-  # if manifest is not yet synced (e.g. pod lib lint on a fresh checkout).
-  s.version          = MANIFEST_VERSION == "0.0.0-manifest-missing" ? package["version"] : MANIFEST_VERSION
+  s.version          = manifest_version == "0.0.0-manifest-missing" ? package["version"] : manifest_version
   s.summary          = package["description"]
   s.description      = package["description"]
   s.license          = package["license"] || "MIT"
@@ -85,17 +87,20 @@ Pod::Spec.new do |s|
   s.subspec "Core" do |c|
     c.dependency "ExpoModulesCore"
 
-    c.source_files  = "ios/**/*.{h,m,mm,swift}"
-    # CRITICAL: keep MediaPipeFallback sources out of the default compile —
-    # otherwise the opt-in MediaPipe imports fail to resolve under default
-    # install (RESEARCH.md Q8). 14-03 lands the actual fallback bridge under
-    # ios/MediaPipeFallback/.
-    c.exclude_files = "ios/MediaPipeFallback/**/*"
+    # Source files glob: this podspec sits in ios/, so "**/*.{h,m,mm,swift}"
+    # matches everything under ios/ — including Sources/LiteRTLMSwift/ vendored
+    # Swift modules.
+    c.source_files  = "**/*.{h,m,mm,swift}"
+    # Exclusions (relative to ios/):
+    #  - MediaPipeFallback/**: opt-in subspec sources kept out of default compile.
+    #  - Frameworks/**: prevents the source_files glob from scooping up C headers
+    #    inside vendored xcframeworks (CLiteRTLM.framework ships engine.h +
+    #    litert_lm_logging.h in its Headers/ dir) which would otherwise be
+    #    exposed in the pod umbrella header and break import resolution.
+    c.exclude_files = ["MediaPipeFallback/**/*", "Frameworks/**/*"]
 
-    # vendored_frameworks is manifest-driven (BOTH LiteRTLM-rewrapped + GemmaModelConstraintProvider).
-    # The array is populated from ios/Frameworks/rewrap-manifest.json at pod install time.
-    # Populated by: make sync TAG=v<upstream>+rewrap.<n>
-    c.vendored_frameworks = VENDORED_XCFRAMEWORKS
+    # vendored_frameworks paths are relative to THIS podspec's directory (ios/).
+    c.vendored_frameworks = vendored_paths
 
     c.pod_target_xcconfig = {
       "DEFINES_MODULE"            => "YES",
@@ -112,7 +117,7 @@ Pod::Spec.new do |s|
     m.dependency "MediaPipeTasksGenAI"
     m.dependency "MediaPipeTasksGenAIC"
 
-    m.source_files = "ios/MediaPipeFallback/**/*.{h,m,mm,swift}"
+    m.source_files = "MediaPipeFallback/**/*.{h,m,mm,swift}"
 
     m.pod_target_xcconfig = {
       "OTHER_SWIFT_FLAGS" => "$(inherited) -D EXPO_LITERTLM_MEDIAPIPE_FALLBACK"
