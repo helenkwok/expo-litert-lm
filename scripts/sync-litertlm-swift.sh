@@ -2,11 +2,12 @@
 # sync-litertlm-swift.sh
 # Fetches rewrapped LiteRTLM-Swift xcframeworks from the fork's GitHub Release
 # by tag, verifies SHA-256 against rewrap-manifest.json, places artifacts
-# under ios/Frameworks/, bumps package.json version, copies manifest.
+# under ios/BinaryPods/Frameworks/, bumps package.json version, copies manifest.
 #
 # Manual sync only — this script does NOT auto-commit. Operator reviews and
-# commits explicitly: ios/Frameworks/rewrap-manifest.json + package.json +
-# CHANGELOG.md. Do NOT commit the .xcframework binaries (gitignored).
+# commits explicitly: ios/BinaryPods/Frameworks/rewrap-manifest.json +
+# package.json + package-lock.json + CHANGELOG.md. Do NOT commit the
+# .xcframework binaries (gitignored).
 #
 # Requires: gh CLI authenticated as a user with read access to helenkwok/LiteRTLM-Swift
 # Requires: jq, shasum (macOS), npm (for version bump), unzip
@@ -23,7 +24,7 @@ TAG="${1:-}"
 [ -n "$TAG" ] || { echo "usage: $0 <tag>  (e.g. v0.7.3+rewrap.1)" >&2; exit 1; }
 
 REPO="helenkwok/LiteRTLM-Swift"
-DEST="ios/Frameworks"
+DEST="ios/BinaryPods/Frameworks"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
@@ -47,7 +48,7 @@ schema_version=$(jq -r .schema_version "$manifest")
 
 count=$(jq '.xcframeworks | length' "$manifest")
 [ "$count" -ge 2 ] || {
-  echo "FAIL: manifest.xcframeworks has $count entries, expected >=2 (LiteRTLM-rewrapped + GemmaModelConstraintProvider)" >&2
+  echo "FAIL: manifest.xcframeworks has $count entries, expected >=2 (CLiteRTLM + GemmaModelConstraintProvider)" >&2
   exit 1
 }
 
@@ -120,6 +121,7 @@ echo ""
 echo "Files to COMMIT (manual review first):"
 echo "  $DEST/rewrap-manifest.json  (trust anchor — MUST be committed)"
 echo "  package.json                (version bumped to $new_pkg_ver)"
+echo "  package-lock.json           (version bumped to $new_pkg_ver)"
 echo "  CHANGELOG.md                (sync entry added)"
 echo ""
 echo "Files to NOT COMMIT (gitignored binaries):"

@@ -19,7 +19,7 @@
 ^\./CHANGELOG\.md:
 
 # Podspec comments narrate the rewrap policy (does not vendor raw path)
-^\./ExpoLitertLm\.podspec:
+^\./ios/ExpoLitertLm\.podspec:
 
 # README narrates the consumer model
 ^\./README\.md:

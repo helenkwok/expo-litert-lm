@@ -6,7 +6,8 @@
 # All three layers must pass (exit 0) for the script to succeed.
 # Run from repo root or via `make verify`.
 #
-# Layer A: `pod install` from fresh consumer in a temp dir + grep Podfile.lock
+# Layer A: `pod install` of the binary pods from a fresh consumer temp dir +
+# grep Podfile.lock / generated CocoaPods support files
 # Layer B: static grep for raw `LiteRTLM.xcframework` references — the upstream
 # raw artifact is not consumable on iOS (App Store notary issues; Phase 14 D-24).
 # The canonical rewrapped artifact is `CLiteRTLM.xcframework` (outer name matches
@@ -15,7 +16,7 @@
 # `LiteRTLM-rewrapped.xcframework` — also accepted as a transitional name.
 # Layer C: manifest-driven podspec consistency check
 #
-# Note on Layer A: requires ios/Frameworks/rewrap-manifest.json + the xcframework
+# Note on Layer A: requires ios/BinaryPods/Frameworks/rewrap-manifest.json + the xcframework
 # binaries on disk (populated by `make sync TAG=...`). If binaries are absent,
 # Layer A will fail with a CocoaPods error about missing vendored_frameworks.
 
@@ -26,7 +27,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
 ERRORS=0
-MANIFEST="$REPO_ROOT/ios/Frameworks/rewrap-manifest.json"
+MANIFEST="$REPO_ROOT/ios/BinaryPods/Frameworks/rewrap-manifest.json"
 
 # =============================================================================
 # Layer B: static grep gate (fast — runs first)
@@ -43,19 +44,16 @@ if [ -f "$ALLOWLIST" ]; then
 fi
 
 set +e
+raw_hits=$(grep -rnE 'LiteRTLM\.xcframework' \
+  --include='*.swift' --include='*.json' --include='*.podspec' \
+  --include='*.rb' --include='*.sh' --include='*.txt' \
+  . 2>/dev/null \
+  | grep -vE '(CLiteRTLM|LiteRTLM-rewrapped)' || true)
+
 if [ -s "$ACTIVE_PATTERNS_FILE" ]; then
-  hits=$(grep -rnE 'LiteRTLM\.xcframework' \
-    --include='*.swift' --include='*.json' --include='*.podspec' \
-    --include='*.rb' --include='*.sh' --include='*.txt' \
-    . 2>/dev/null \
-    | grep -v '\-rewrapped' \
-    | grep -E -v -f "$ACTIVE_PATTERNS_FILE" || true)
+  hits=$(printf '%s\n' "$raw_hits" | grep -E -v -f "$ACTIVE_PATTERNS_FILE" || true)
 else
-  hits=$(grep -rnE 'LiteRTLM\.xcframework' \
-    --include='*.swift' --include='*.json' --include='*.podspec' \
-    --include='*.rb' --include='*.sh' --include='*.txt' \
-    . 2>/dev/null \
-    | grep -vE '(CLiteRTLM|LiteRTLM-rewrapped)' || true)
+  hits="$raw_hits"
 fi
 set -e
 
@@ -74,7 +72,7 @@ echo ""
 echo "==> Layer C: manifest consistency"
 
 if [ ! -f "$MANIFEST" ]; then
-  echo "FAIL: ios/Frameworks/rewrap-manifest.json not found — run `make sync TAG=<tag>` first" >&2
+  echo "FAIL: ios/BinaryPods/Frameworks/rewrap-manifest.json not found — run `make sync TAG=<tag>` first" >&2
   ERRORS=$((ERRORS + 1))
 else
   # Assert schema_version == 1
@@ -104,42 +102,47 @@ else
     fi
   done < <(jq -r '.xcframeworks[] | [.name, .zip_sha256] | @tsv' "$MANIFEST" 2>/dev/null || true)
 
-  # Assert LiteRTLM entry name contains '-rewrapped'
-  litertlm_name=$(jq -r '.xcframeworks[] | select(.name | startswith("LiteRTLM")) | .name' "$MANIFEST" 2>/dev/null || echo "")
+  # Assert the rewrapped LiteRTLM entry uses an accepted wrapper name.
+  litertlm_name=$(jq -r '.xcframeworks[] | select(.name | test("^(CLiteRTLM|LiteRTLM-rewrapped)\\.xcframework$")) | .name' "$MANIFEST" 2>/dev/null || echo "")
   if [ -z "$litertlm_name" ]; then
-    echo "FAIL: no LiteRTLM entry in manifest.xcframeworks" >&2
+    echo "FAIL: no accepted rewrapped LiteRTLM entry in manifest.xcframeworks" >&2
     layer_c_ok=false
-  elif ! echo "$litertlm_name" | grep -q '\-rewrapped'; then
-    echo "FAIL: LiteRTLM manifest entry name '$litertlm_name' must contain '-rewrapped'" >&2
+  elif ! echo "$litertlm_name" | grep -qE '^(CLiteRTLM|LiteRTLM-rewrapped)\.xcframework$'; then
+    echo "FAIL: LiteRTLM manifest entry name '$litertlm_name' is not an accepted rewrapped name" >&2
     layer_c_ok=false
   else
-    echo "  LiteRTLM '-rewrapped' qualifier OK ($litertlm_name)"
+    echo "  Rewrapped LiteRTLM entry OK ($litertlm_name)"
   fi
 
-  # Cross-check podspec vendored_frameworks resolves to manifest xcframework names
+  # Cross-check binary pod vendored_frameworks resolve to manifest xcframework names.
   set +e
   podspec_xcfws=$(ruby -e "
     require 'json'
-    manifest = JSON.parse(File.read('ios/Frameworks/rewrap-manifest.json'))
-    expected = manifest['xcframeworks'].map { |x| \"ios/Frameworks/\#{x['name']}\" }
-    puts expected.join('\n')
+    manifest = JSON.parse(File.read('ios/BinaryPods/Frameworks/rewrap-manifest.json'))
+    expected = manifest['xcframeworks'].map { |x| \"ios/BinaryPods/Frameworks/#{x['name']}\" }
+    puts expected
   " 2>/dev/null)
   set -e
 
   if [ -n "$podspec_xcfws" ]; then
-    # Verify each expected xcframework path is referenced in the podspec
     while IFS= read -r expected_path; do
-      if ! grep -q "$expected_path" ExpoLitertLm.podspec; then
-        # The podspec uses a dynamic array, so the path won't be literal in the file.
-        # Instead check that the xcframework name appears in the manifest entries list.
-        xcf_name=$(basename "$expected_path")
-        if ! jq -e --arg name "$xcf_name" '.xcframeworks[] | select(.name == $name)' "$MANIFEST" > /dev/null 2>&1; then
-          echo "FAIL: xcframework $xcf_name from podspec not found in manifest" >&2
-          layer_c_ok=false
-        fi
+      if [ ! -d "$REPO_ROOT/$expected_path" ]; then
+        echo "FAIL: manifest xcframework path missing on disk: $expected_path" >&2
+        layer_c_ok=false
       fi
     done <<< "$podspec_xcfws"
-    echo "  Podspec xcframework entries match manifest OK"
+
+    if ! grep -q 'Frameworks/CLiteRTLM.xcframework' "$REPO_ROOT/ios/BinaryPods/CLiteRTLMBinary.podspec"; then
+      echo "FAIL: CLiteRTLMBinary.podspec does not vendor Frameworks/CLiteRTLM.xcframework" >&2
+      layer_c_ok=false
+    fi
+
+    if ! grep -q 'Frameworks/GemmaModelConstraintProvider.xcframework' "$REPO_ROOT/ios/BinaryPods/GemmaModelConstraintProviderBinary.podspec"; then
+      echo "FAIL: GemmaModelConstraintProviderBinary.podspec does not vendor Frameworks/GemmaModelConstraintProvider.xcframework" >&2
+      layer_c_ok=false
+    fi
+
+    echo "  Binary pod xcframework paths match manifest OK"
   fi
 
   if [ "$layer_c_ok" = true ]; then
@@ -162,114 +165,22 @@ else
   TMPDIR_A=$(mktemp -d)
   trap "rm -rf $TMPDIR_A" EXIT
 
-  # Create a minimal Expo/RN consumer that references expo-litert-lm via local path
+  # Create a minimal CocoaPods consumer for the two binary pods. We disable user
+  # project integration because this layer is checking dependency resolution,
+  # binary podspec loading, and generated xcframework support scripts.
   CONSUMER_DIR="$TMPDIR_A/consumer"
   mkdir -p "$CONSUMER_DIR/ios"
 
   cat > "$CONSUMER_DIR/ios/Podfile" <<PODFILE_EOF
+install! 'cocoapods', :integrate_targets => false
 platform :ios, '17.0'
 use_frameworks!
 
 target 'Consumer' do
-  pod 'ExpoLitertLm', :path => '${REPO_ROOT}'
+  pod 'CLiteRTLMBinary', :path => '${REPO_ROOT}/ios/BinaryPods'
+  pod 'GemmaModelConstraintProviderBinary', :path => '${REPO_ROOT}/ios/BinaryPods'
 end
 PODFILE_EOF
-
-  # Create a minimal Xcode project structure so CocoaPods has a target to link against
-  mkdir -p "$CONSUMER_DIR/ios/Consumer.xcodeproj"
-  cat > "$CONSUMER_DIR/ios/Consumer.xcodeproj/project.pbxproj" <<'PBXPROJ_EOF'
-// !$*UTF8*$!
-{
-  archiveVersion = 1;
-  classes = {};
-  objectVersion = 56;
-  objects = {
-    /* Begin PBXBuildFile section */
-    /* End PBXBuildFile section */
-    /* Begin PBXFileReference section */
-    /* End PBXFileReference section */
-    /* Begin PBXNativeTarget section */
-    B0000001 = {
-      isa = PBXNativeTarget;
-      buildConfigurationList = B0000002;
-      buildPhases = ();
-      buildRules = ();
-      dependencies = ();
-      name = Consumer;
-      productName = Consumer;
-      productType = "com.apple.product-type.application";
-    };
-    /* End PBXNativeTarget section */
-    /* Begin PBXProject section */
-    B0000003 = {
-      isa = PBXProject;
-      attributes = {};
-      buildConfigurationList = B0000004;
-      compatibilityVersion = "Xcode 14.0";
-      developmentRegion = en;
-      hasScannedForEncodings = 0;
-      knownRegions = (en);
-      mainGroup = B0000005;
-      targets = (B0000001);
-    };
-    /* End PBXProject section */
-    /* Begin XCBuildConfiguration section */
-    B0000006 = {
-      isa = XCBuildConfiguration;
-      buildSettings = {
-        PRODUCT_NAME = Consumer;
-        SDKROOT = iphoneos;
-        TARGETED_DEVICE_FAMILY = "1,2";
-        IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-      };
-      name = Debug;
-    };
-    B0000007 = {
-      isa = XCBuildConfiguration;
-      buildSettings = {
-        PRODUCT_NAME = Consumer;
-        SDKROOT = iphoneos;
-        TARGETED_DEVICE_FAMILY = "1,2";
-        IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-      };
-      name = Release;
-    };
-    B0000008 = {
-      isa = XCBuildConfiguration;
-      buildSettings = {};
-      name = Debug;
-    };
-    B0000009 = {
-      isa = XCBuildConfiguration;
-      buildSettings = {};
-      name = Release;
-    };
-    /* End XCBuildConfiguration section */
-    /* Begin XCConfigurationList section */
-    B0000002 = {
-      isa = XCConfigurationList;
-      buildConfigurations = (B0000006, B0000007);
-      defaultConfigurationIsVisible = 0;
-      defaultConfigurationName = Release;
-    };
-    B0000004 = {
-      isa = XCConfigurationList;
-      buildConfigurations = (B0000008, B0000009);
-      defaultConfigurationIsVisible = 0;
-      defaultConfigurationName = Release;
-    };
-    /* End XCConfigurationList section */
-    /* Begin PBXGroup section */
-    B0000005 = {
-      isa = PBXGroup;
-      children = ();
-      sourceTree = "<group>";
-    };
-    /* End PBXGroup section */
-  };
-  rootObject = B0000003;
-}
-PBXPROJ_EOF
 
   # Propagate the project's pinned CocoaPods version into the tmpdir so asdf's
   # shim resolves correctly. The tmpdir lives outside the repo, so asdf can't
@@ -299,21 +210,38 @@ PBXPROJ_EOF
       echo "FAIL: Podfile.lock not generated after pod install" >&2
       ERRORS=$((ERRORS + 1))
     else
-      if ! grep -qE '(CLiteRTLM|LiteRTLM-rewrapped)' "$PODFILE_LOCK"; then
-        echo "FAIL: Podfile.lock does not reference the rewrapped xcframework (CLiteRTLM or LiteRTLM-rewrapped)" >&2
+      if ! grep -q 'CLiteRTLMBinary' "$PODFILE_LOCK"; then
+        echo "FAIL: Podfile.lock does not reference CLiteRTLMBinary" >&2
         echo "  Podfile.lock contents:" >&2
         cat "$PODFILE_LOCK" >&2
         ERRORS=$((ERRORS + 1))
       else
-        echo "  PASS: Podfile.lock references the rewrapped xcframework"
+        echo "  PASS: Podfile.lock references CLiteRTLMBinary"
       fi
 
-      # Assert NO MediaPipeTasksGenAI in default install (D-22 regression gate)
-      if grep -q 'MediaPipeTasksGenAI' "$PODFILE_LOCK"; then
-        echo "FAIL: Podfile.lock contains MediaPipeTasksGenAI (D-22 regression — should only appear in MediaPipeFallback subspec)" >&2
+      if ! grep -q 'GemmaModelConstraintProviderBinary' "$PODFILE_LOCK"; then
+        echo "FAIL: Podfile.lock does not reference GemmaModelConstraintProviderBinary" >&2
+        echo "  Podfile.lock contents:" >&2
+        cat "$PODFILE_LOCK" >&2
         ERRORS=$((ERRORS + 1))
       else
-        echo "  PASS: MediaPipeTasksGenAI absent from default install (D-22 preserved)"
+        echo "  PASS: Podfile.lock references GemmaModelConstraintProviderBinary"
+      fi
+
+      support_dir="$CONSUMER_DIR/ios/Pods/Target Support Files/CLiteRTLMBinary"
+      if ! grep -q 'CLiteRTLM.xcframework' "$support_dir/CLiteRTLMBinary-xcframeworks.sh"; then
+        echo "FAIL: CocoaPods support script does not reference CLiteRTLM.xcframework" >&2
+        ERRORS=$((ERRORS + 1))
+      else
+        echo "  PASS: CocoaPods generated CLiteRTLM xcframework support script"
+      fi
+
+      # Assert NO MediaPipeTasksGenAI in the binary pod install.
+      if grep -q 'MediaPipeTasksGenAI' "$PODFILE_LOCK"; then
+        echo "FAIL: Podfile.lock contains MediaPipeTasksGenAI (should only appear in MediaPipeFallback subspec)" >&2
+        ERRORS=$((ERRORS + 1))
+      else
+        echo "  PASS: MediaPipeTasksGenAI absent from binary pod install"
       fi
     fi
   fi

@@ -3,8 +3,9 @@ require "json"
 # =============================================================================
 # ExpoLitertLm.podspec — manifest-driven xcframework consumer
 # =============================================================================
-# Frameworks/rewrap-manifest.json (relative to THIS podspec, i.e. ios/) is the
-# single source of truth for xcframework names, versions, and sha256 values.
+# BinaryPods/Frameworks/rewrap-manifest.json (relative to THIS podspec, i.e.
+# ios/) is the single source of truth for xcframework names, versions, and
+# sha256 values.
 # Populated by scripts/sync-litertlm-swift.sh (Phase 14 D-31, D-34).
 #
 # If the manifest is missing, pod install will fail with a clear message.
@@ -17,8 +18,7 @@ require "json"
 # =============================================================================
 
 begin
-  # Manifest lives next to the xcframeworks under Frameworks/, i.e. siblings
-  # of this podspec.
+  # Manifest lives next to the xcframeworks under BinaryPods/Frameworks/.
   manifest_path = File.expand_path("BinaryPods/Frameworks/rewrap-manifest.json", __dir__)
   raise "rewrap-manifest.json missing at #{manifest_path} — run `make sync TAG=v<upstream>+rewrap.<n>` first (Phase 14 D-34)" unless File.exist?(manifest_path)
 
@@ -40,8 +40,9 @@ begin
     raise "xcframework #{x['name']} has missing/invalid zip_sha256 (#{sha.inspect}) — re-run `make sync TAG=...`" unless sha.match?(/\A[0-9a-f]{64}\z/)
   end
 
-  # Paths are relative to the podspec dir (ios/), so Frameworks/<name> resolves
-  # to ios/Frameworks/<name> from the package root.
+  # Paths are relative to the podspec dir (ios/). Binary podspecs live under
+  # BinaryPods/, so their vendored Frameworks/<name> paths resolve to
+  # ios/BinaryPods/Frameworks/<name> from the package root.
   vendored_paths = xcfws.map { |x| "Frameworks/#{x['name']}" }
 
   upstream_ver = rewrap_manifest["upstream_version"].to_s.sub(/^v/, "")
