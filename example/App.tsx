@@ -82,7 +82,12 @@ export default function App() {
     });
     if (res.canceled) return;
     const uri = res.assets?.[0]?.uri;
-    if (uri) setModelPath(uri);
+    if (uri) {
+      // Native module's URL(fileURLWithPath:) treats its arg as POSIX path,
+      // so a file:// scheme prefix breaks fileExists. Strip it for Stage B.
+      // Phase 14-09 follow-up: native module should accept either form.
+      setModelPath(uri.startsWith('file://') ? uri.replace(/^file:\/\//, '') : uri);
+    }
   };
 
   const startPolling = () => {
