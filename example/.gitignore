@@ -18,5 +18,5 @@ web-build/
 # OS
 .DS_Store
 
-# Stage B run output (NDJSON copied to .planning/ after device run)
+# Device-run memory traces
 rss-stageB-*.ndjson
