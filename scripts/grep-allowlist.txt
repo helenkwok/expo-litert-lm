@@ -1,0 +1,16 @@
+# Layer B grep allowlist — regex-per-line (ERE).
+# Lines starting with '#' are comments; empty lines are ignored.
+# These patterns exempt known-legitimate references to raw LiteRTLM.xcframework
+# from the grep gate that would otherwise reject them.
+#
+# Format: each pattern is matched against grep -nE output (path:linenum:content).
+# A hit that matches ANY pattern here is considered allowed and excluded from failures.
+
+# sync script reads the manifest which references the canonical xcframework name
+^scripts/sync-litertlm-swift\.sh:
+
+# The allowlist file itself documents what we're guarding against
+^scripts/grep-allowlist\.txt:
+
+# CHANGELOG references historical filenames as context
+^CHANGELOG\.md:
