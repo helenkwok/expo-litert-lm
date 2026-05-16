@@ -59,4 +59,11 @@ export declare function unloadLiteRtModel(): Promise<void>;
  * subscription to detach.
  */
 export declare function addLiteRtTokenListener(listener: (event: LiteRtTokenEvent) => void): EventSubscription;
+/**
+ * Returns the current process `phys_footprint` in MB. Phase 14 Stage B helper
+ * for measuring bridge-included RAM. Source: MemoryProbe
+ * (`task_vm_info_data_t.phys_footprint`, the same value iOS uses for jetsam
+ * decisions). iOS only — returns 0 on web; not implemented on Android.
+ */
+export declare function sampleMemoryAsync(): Promise<number>;
 //# sourceMappingURL=index.d.ts.map

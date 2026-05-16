@@ -1,0 +1,25 @@
+{
+  "name": "expo-litert-lm-example",
+  "version": "0.0.1",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start --dev-client",
+    "ios": "expo run:ios --device",
+    "prebuild": "expo prebuild --platform ios --clean"
+  },
+  "dependencies": {
+    "expo": "~55.0.0",
+    "expo-build-properties": "^55.0.14",
+    "expo-document-picker": "~55.0.13",
+    "expo-file-system": "~55.0.20",
+    "expo-litert-lm": "file:..",
+    "react": "19.2.0",
+    "react-native": "0.83.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.0",
+    "@types/react": "~19.2.0",
+    "typescript": "^5.6.0"
+  }
+}

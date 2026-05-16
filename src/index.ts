@@ -51,6 +51,7 @@ interface NativeExpoLitertLmModule {
   generateAudioResponseAsync(audioPath: string, prompt: string): Promise<string>;
   cancelGenerateResponseAsync(): Promise<void>;
   unloadModelAsync(): Promise<void>;
+  sampleMemoryAsync(): Promise<number>;
 }
 
 const DEFAULT_MAX_TOKENS = 2048;
@@ -161,4 +162,15 @@ export function addLiteRtTokenListener(
   listener: (event: LiteRtTokenEvent) => void
 ): EventSubscription {
   return eventEmitter().addListener<LiteRtTokenEvent>('onToken', listener);
+}
+
+/**
+ * Returns the current process `phys_footprint` in MB. Phase 14 Stage B helper
+ * for measuring bridge-included RAM. Source: MemoryProbe
+ * (`task_vm_info_data_t.phys_footprint`, the same value iOS uses for jetsam
+ * decisions). iOS only — returns 0 on web; not implemented on Android.
+ */
+export async function sampleMemoryAsync(): Promise<number> {
+  if (Platform.OS !== 'ios') return 0;
+  return nativeModule().sampleMemoryAsync();
 }

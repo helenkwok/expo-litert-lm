@@ -1,6 +1,9 @@
 import ExpoModulesCore
 import Foundation
-import LiteRTLMSwift
+// LiteRTLMSwift sources are vendored under ios/Sources/LiteRTLMSwift/ and
+// compiled into the ExpoLitertLm pod module (podspec Core subspec source_files
+// glob picks them up). No separate `LiteRTLMSwift` Swift module exists in the
+// Pod consumer path — types like LiteRTLMEngine are visible at this scope.
 
 private struct LiteRtLoadConfig: Equatable {
   let maxTokens: Int
@@ -43,6 +46,13 @@ public final class ExpoLitertLmModule: Module {
         return true
       }
       return false
+    }
+
+    // Phase 14 Stage B (D-07): JS-readable phys_footprint sampler. Same Mach
+    // kernel data the iOS jetsam path uses for OOM decisions; returned in MB
+    // for JS-friendliness.
+    AsyncFunction("sampleMemoryAsync") { () -> Double in
+      return Double(MemoryProbe.currentPhysFootprint()) / 1024.0 / 1024.0
     }
 
     AsyncFunction("loadModelAsync") { (

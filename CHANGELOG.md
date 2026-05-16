@@ -2,6 +2,7 @@
 
 ## 0.2.0-dev.1 — Phase 14 (in progress, 2026-05-15)
 
+- **Added:** `sampleMemoryAsync()` — returns the current process `phys_footprint` in MB for Stage B integration measurement (Phase 14 D-07). iOS only; surfaced via colocated `ios/MemoryProbe.swift` (task_info / TASK_VM_INFO). Stage B example app under `example/` exercises the full Expo + RN + native bridge end-to-end against the rewrapped LiteRTLM-Swift xcframework on SE 3rd gen.
 - **Changed:** `scripts/sync-litertlm-swift.sh` rewritten — now fetches rewrapped LiteRTLM-Swift from `helenkwok/LiteRTLM-Swift`'s GitHub Release by tag, verifies SHA-256 against `rewrap-manifest.json`, places artifacts under `ios/Frameworks/`. Manual sync per Phase 14 D-34. Run `make sync TAG=v<upstream>+rewrap.<n>`.
 - **Added:** `ios/Frameworks/rewrap-manifest.json` — trust anchor (source-controlled JSON, populated by sync script). xcframework binaries remain gitignored.
 - **Added:** `ExpoLitertLm.podspec` now reads `vendored_frameworks` and `s.version` from `ios/Frameworks/rewrap-manifest.json` via Ruby `JSON.parse` at install time. Phase 14 D-31 single source of truth.

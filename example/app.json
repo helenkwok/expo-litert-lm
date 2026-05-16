@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "expolitertlmexample",
+    "slug": "expolitertlmexample",
+    "version": "0.0.1",
+    "platforms": ["ios"],
+    "ios": {
+      "bundleIdentifier": "com.helenkwok.expolitertlmexample",
+      "appleTeamId": "6ZUA894YBV",
+      "deploymentTarget": "17.0",
+      "infoPlist": {
+        "UIFileSharingEnabled": true,
+        "LSSupportsOpeningDocumentsInPlace": true
+      },
+      "entitlements": {
+        "com.apple.developer.kernel.increased-memory-limit": true
+      }
+    },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "17.0"
+          }
+        }
+      ]
+    ]
+  }
+}
