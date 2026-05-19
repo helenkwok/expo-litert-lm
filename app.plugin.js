@@ -2,16 +2,19 @@
  * expo-litert-lm config plugin
  *
  * Phase 14-09 Task 2: injects top-level binary pod entries into the consumer's
- * ios/Podfile so CocoaPods discovers CLiteRTLMBinary.podspec and
- * GemmaModelConstraintProviderBinary.podspec — which live alongside
- * ExpoLitertLm.podspec under ios/ but are NOT auto-discovered by Expo
+ * ios/Podfile so CocoaPods discovers CLiteRTLMBinary.podspec — which lives
+ * alongside ExpoLitertLm.podspec under ios/ but is NOT auto-discovered by Expo
  * autolinking (autolinking only picks the podName from expo-module.config.json).
  *
  * Why we need this:
  *   CocoaPods #11948 silently drops vendored_frameworks declared on a SUBSPEC
- *   under static linkage. Moving the xcframeworks onto top-level Pod::Spec.new
- *   objects bypasses that defect. The pod entries here are how those top-level
- *   specs get loaded.
+ *   under static linkage. Moving the xcframework onto a top-level Pod::Spec.new
+ *   bypasses that defect. The pod entry here is how that top-level spec gets
+ *   loaded.
+ *
+ * v0.12.0 spike (feat/litert-v0.12): GemmaModelConstraintProviderBinary dropped
+ * — GMCP symbols are now statically linked into Google's first-party
+ * CLiteRTLM.framework (single xcframework, single pod entry).
  */
 
 const { withDangerousMod, createRunOncePlugin } = require("@expo/config-plugins");
@@ -27,7 +30,6 @@ function podBlock(modulePath) {
   return [
     MARKER_BEGIN,
     `  pod 'CLiteRTLMBinary', :path => '${modulePath}'`,
-    `  pod 'GemmaModelConstraintProviderBinary', :path => '${modulePath}'`,
     MARKER_END,
   ].join("\n");
 }

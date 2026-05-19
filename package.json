@@ -1,7 +1,7 @@
 {
   "name": "expo-litert-lm",
   "version": "0.2.0-rc.0",
-  "description": "Expo Modules bindings for on-device LLM inference. Android: Google's litert-lm-android (LiteRT-LM Engine + MediaPipe Tasks GenAI). iOS: vendored LiteRTLM-Swift wrapping the LiteRT-LM C API; MediaPipe Tasks GenAI available as opt-in MediaPipeFallback subspec. Supports .litertlm and .task model formats.",
+  "description": "Expo Modules bindings for on-device LLM inference. Android: Google's litert-lm-android (LiteRT-LM Engine + MediaPipe Tasks GenAI). iOS: Google's first-party LiteRT-LM Swift APIs (v0.12.0+) with Metal GPU acceleration; MediaPipe Tasks GenAI available as opt-in MediaPipeFallback subspec. Supports .litertlm and .task model formats.",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "scripts": {
@@ -14,15 +14,13 @@
     "ios/**/*.swift",
     "ios/ExpoLitertLm.podspec",
     "ios/BinaryPods/CLiteRTLMBinary.podspec",
-    "ios/BinaryPods/GemmaModelConstraintProviderBinary.podspec",
     "ios/BinaryPods/Frameworks/CLiteRTLM.xcframework",
-    "ios/BinaryPods/Frameworks/GemmaModelConstraintProvider.xcframework",
-    "ios/BinaryPods/Frameworks/rewrap-manifest.json",
     "src",
     "lib",
     "expo-module.config.json",
     "app.plugin.js",
     "LICENSE",
+    "NOTICE",
     "README.md"
   ],
   "keywords": [

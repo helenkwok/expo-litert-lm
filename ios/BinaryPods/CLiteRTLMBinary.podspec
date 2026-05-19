@@ -8,33 +8,28 @@ require "json"
 # under static linkage. Moving vendored_frameworks to a top-level Pod::Spec.new
 # bypasses that defect.
 #
-# Discovered by consumers via the expo-litert-lm config plugin
-# (plugin/withLitertLmBinaryPods.ts), which injects
-#   pod 'CLiteRTLMBinary', :path => '../node_modules/expo-litert-lm/ios'
-# into the host Podfile.
+# v0.12.0 spike (feat/litert-v0.12): xcframework is now Google's first-party
+# CLiteRTLM.xcframework from google-ai-edge/LiteRT-LM v0.12.0 release. Single
+# 39 MB binary with Metal accelerator + TopK sampler + GemmaModelConstraint-
+# Provider statically linked (no separate xcframeworks needed). The rewrap
+# manifest is retired — Google's binary already ships with proper
+# CFBundleShortVersionString and CFBundleVersion.
 #
-# Version is read from Frameworks/rewrap-manifest.json — same source of truth
-# as ExpoLitertLm.podspec.
+# Version is read from package.json since the upstream is a first-party
+# Google release; tracking is via the upstream LiteRT-LM release tag (v0.12.0).
 # =============================================================================
 
-manifest_path = File.expand_path("Frameworks/rewrap-manifest.json", __dir__)
-manifest_version = "0.0.0-manifest-missing"
+package = JSON.parse(File.read(File.join(__dir__, "..", "..", "package.json")))
 
-begin
-  raise "rewrap-manifest.json missing at #{manifest_path}" unless File.exist?(manifest_path)
-  manifest = JSON.parse(File.read(manifest_path))
-  upstream = manifest["upstream_version"].to_s.sub(/^v/, "")
-  iter     = manifest["rewrap_iteration"].to_s
-  manifest_version = "#{upstream}.rewrap.#{iter}"
-rescue => e
-  warn "[CLiteRTLMBinary] WARNING: could not read rewrap-manifest.json — #{e.message}"
-end
+# Upstream LiteRT-LM release we ship. Update in lockstep with
+# Frameworks/CLiteRTLM.xcframework. See README for SHA verification.
+LITERT_LM_UPSTREAM = "0.12.0"
 
 Pod::Spec.new do |s|
   s.name             = "CLiteRTLMBinary"
-  s.version          = manifest_version
-  s.summary          = "Binary pod for CLiteRTLM.xcframework (rewrapped LiteRT-LM Swift)."
-  s.description      = "Top-level vendored_frameworks pod for CLiteRTLM. Split out from ExpoLitertLm/Core to work around CocoaPods #11948."
+  s.version          = package["version"]
+  s.summary          = "Binary pod for CLiteRTLM.xcframework (LiteRT-LM v#{LITERT_LM_UPSTREAM} first-party)."
+  s.description      = "Top-level vendored_frameworks pod for CLiteRTLM. Split out from ExpoLitertLm/Core to work around CocoaPods #11948. Ships google-ai-edge/LiteRT-LM v#{LITERT_LM_UPSTREAM} xcframework."
   s.homepage         = "https://github.com/helenkwok/expo-litert-lm"
   s.license          = { :type => "MIT" }
   s.author           = "Helen Kwok"

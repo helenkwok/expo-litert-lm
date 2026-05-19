@@ -1,8 +1,6 @@
-# LiteRTLM xcframework binaries are gitignored — they are large platform binaries
-# fetched at sync time via scripts/sync-litertlm-swift.sh.
-# Use `make sync TAG=<tag>` to populate this directory.
+# CLiteRTLM.xcframework binary is gitignored — it is a large platform binary
+# fetched at install time via scripts/fetch-litert-lm.sh (pinned by SHA-256
+# to a specific google-ai-edge/LiteRT-LM release).
+#
+# Run `scripts/fetch-litert-lm.sh` from the repo root to populate.
 *.xcframework
-
-# The manifest is the trust anchor and MUST be checked into source control.
-# It is populated by scripts/sync-litertlm-swift.sh after SHA-256 verification.
-!rewrap-manifest.json
