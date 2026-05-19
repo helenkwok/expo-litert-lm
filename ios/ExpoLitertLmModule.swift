@@ -1,9 +1,17 @@
 import ExpoModulesCore
 import Foundation
-// LiteRTLMSwift sources are vendored under ios/Sources/LiteRTLMSwift/ and
-// compiled into the ExpoLitertLm pod module (podspec Core subspec source_files
-// glob picks them up). No separate `LiteRTLMSwift` Swift module exists in the
-// Pod consumer path — types like LiteRTLMEngine are visible at this scope.
+// Google's first-party LiteRT-LM Swift sources are vendored under
+// ios/Sources/LiteRTLM/ (Apache 2.0, see NOTICE). They compile into the
+// ExpoLitertLm pod module via the podspec source_files glob — no separate
+// `LiteRTLM` Swift module exists in the Pod consumer path, so types like
+// `Engine`, `EngineConfig`, `Conversation`, and `Message` are visible at this
+// scope without an import.
+//
+// v0.12.0 spike (feat/litert-v0.12) scope:
+//   - Text-only generation works end-to-end.
+//   - Vision / audio / multimodal / session / conversation-history paths are
+//     stubbed and throw "not yet supported in v0.12.0 spike" with a tracking
+//     reference. Wiring follows once text path is verified on SE 3rd gen.
 
 private struct LiteRtLoadConfig: Equatable {
   let maxTokens: Int
@@ -25,7 +33,8 @@ private enum LoadedRuntime {
 
 public final class ExpoLitertLmModule: Module {
   // Engine handles per runtime. Only one is non-nil at a time.
-  private var litertLmEngine: LiteRTLMEngine?
+  // v0.12.0: `Engine` is an `actor`, so all calls must be `await`-ed.
+  private var litertLmEngine: Engine?
   #if EXPO_LITERTLM_MEDIAPIPE_FALLBACK
   private var mediaPipeFallback: MediaPipeFallbackEngine?
   #endif
@@ -37,6 +46,10 @@ public final class ExpoLitertLmModule: Module {
 
   private let stateQueue = DispatchQueue(label: "expo.modules.litertlm.state")
   private var activeGenerationID: UUID?
+  // Holds the in-flight Conversation so cancelGenerateResponseAsync can invoke
+  // its native cancel(). UUID-gating remains as a secondary at-next-iteration
+  // break; conversation.cancel() is the primary mechanism.
+  private var activeConversation: Conversation?
 
   public func definition() -> ModuleDefinition {
     Name("ExpoLitertLm")
@@ -91,20 +104,41 @@ public final class ExpoLitertLmModule: Module {
       var shouldStopSecurityScopeOnExit = didStartSecurityScope
 
       if Self.isLiteRtLmModelPath(resolvedModelPath) {
-        // LiteRTLM-Swift path — default for `.litertlm` models.
-        // textOnly: true is REQUIRED for the v1.1 floor-device model
-        // (gemma3-1b-it-int4.litertlm has no vision/audio encoders). Stage A
-        // discovered this in 14-06 (fork@93d35e0 → added textOnly param);
-        // 14-07 surfaced that the param wasn't being threaded through the
-        // Expo Modules consumer. Multimodal Gemma 4 callers must set this
-        // to false explicitly when that path is wired (Phase 16).
-        let engine = LiteRTLMEngine(
-          modelPath: modelURL,
-          backend: resolvedBackend,
-          textOnly: true
-        )
+        // First-party Google LiteRT-LM path — default for `.litertlm` models.
+        //
+        // visionBackend/audioBackend left nil = text-only model load. The
+        // v1.1 floor-device model (gemma3-1b-it-int4.litertlm) has no
+        // vision/audio encoders, and the v0.12.0 spike is text-only scope —
+        // multimodal wiring is tracked separately.
+        let backend: Backend = (resolvedBackend == "gpu") ? .gpu : .cpu()
+
+        let engineConfig: EngineConfig
         do {
-          try await engine.load()
+          engineConfig = try EngineConfig(
+            modelPath: resolvedModelPath,
+            backend: backend,
+            visionBackend: nil,
+            audioBackend: nil,
+            maxNumTokens: maxTokens > 0 ? maxTokens : nil,
+            cacheDir: nil
+          )
+        } catch {
+          if shouldStopSecurityScopeOnExit {
+            modelURL.stopAccessingSecurityScopedResource()
+          }
+          throw LiteRtModuleError(
+            message: self.message(from: error, fallback: "LiteRT EngineConfig rejected.")
+          )
+        }
+
+        let engine = Engine(engineConfig: engineConfig)
+        do {
+          // Engine.initialize() is `throws` (not async) but is called via the
+          // actor — `await` here routes it onto the actor's executor (off the
+          // main thread). Google notes this call "can take a significant
+          // amount of time (e.g., 10 seconds)"; AsyncFunction already runs on
+          // Expo's background scheduler, so no extra detached Task is needed.
+          try await engine.initialize()
         } catch {
           if shouldStopSecurityScopeOnExit {
             modelURL.stopAccessingSecurityScopedResource()
@@ -166,7 +200,10 @@ public final class ExpoLitertLmModule: Module {
       try self.ensureSupportedOS()
 
       let generationID = self.beginGeneration()
-      defer { self.endGeneration(generationID) }
+      defer {
+        self.endGeneration(generationID)
+        self.clearActiveConversation()
+      }
 
       switch self.loadedRuntime {
       case .litertLm:
@@ -210,32 +247,33 @@ public final class ExpoLitertLmModule: Module {
     }
 
     AsyncFunction("generateAudioResponseAsync") { (_: String, _: String) -> String in
-      // LiteRTLM-Swift exposes an `audio()` method on LiteRTLMEngine, but
-      // Phase 14 is chat-only spike scope — Audio Scribe iOS wiring lands in
-      // Phase 16. Preserve the throws-stub matching the pre-rewrite contract.
+      // v0.12.0 spike scope is text-only. Audio Scribe iOS wiring lands in a
+      // follow-up phase using the new Message-based multimodal API
+      // (Message with audio Content).
       throw LiteRtModuleError(
-        message: "LiteRT Audio Scribe is not available on iOS yet."
+        message: "LiteRT Audio Scribe is not yet wired in the v0.12.0 spike (feat/litert-v0.12). Tracked in follow-up."
       )
     }
 
     AsyncFunction("cancelGenerateResponseAsync") {
-      // UUID nil-out gives at-next-iteration cancellation. The LiteRTLM-Swift
-      // streaming API runs the C callback on its own inferenceQueue and we
-      // can't yank it mid-call, but yielding the next chunk causes our gate
-      // check to throw `cancelled` which terminates the async-for loop.
+      // v0.12.0: prefer Conversation.cancel() for prompt cancellation; the
+      // UUID gate remains as a defensive secondary break (cancel() takes
+      // effect at the next inference step inside the native runtime).
+      await self.cancelActiveConversation()
       self.cancelActiveGeneration()
     }
 
     AsyncFunction("unloadModelAsync") {
+      await self.cancelActiveConversation()
       self.cancelActiveGeneration()
       await self.unloadInternalAsync()
     }
 
     OnDestroy {
       self.cancelActiveGeneration()
-      // OnDestroy can't await — use the sync teardown which skips the engine's
-      // @MainActor unload. The engine's deinit re-queues the C deletes on its
-      // inferenceQueue so memory cleanup still runs.
+      // OnDestroy can't await — clear refs synchronously. Engine actor's
+      // deinit invokes litert_lm_engine_delete on the native handle, so
+      // memory cleanup still runs even without an explicit unload call.
       self.unloadInternalSync()
     }
   }
@@ -265,33 +303,65 @@ public final class ExpoLitertLmModule: Module {
     return URL(fileURLWithPath: modelPath)
   }
 
-  // MARK: - LiteRTLM-Swift generation
+  // MARK: - LiteRT-LM v0.12.0 generation
 
   private func runLitertLmGeneration(
-    engine: LiteRTLMEngine,
+    engine: Engine,
     prompt: String,
     generationID: UUID
   ) async throws -> String {
     var latestText = ""
+
     let temperature = Float(self.loadedConfig?.temperature ?? 0.7)
-    let maxTokens = self.loadedConfig?.maxTokens ?? 512
+    let topK = max(self.loadedConfig?.topK ?? 40, 1)
+
+    // ConversationConfig with a SamplerConfig matching the JS-supplied
+    // temperature / topK. v0.12.0 moved sampler params from per-call
+    // generateStreaming args to a per-conversation SamplerConfig.
+    let samplerConfig: SamplerConfig?
+    do {
+      samplerConfig = try SamplerConfig(
+        topK: topK,
+        topP: 1.0,
+        temperature: temperature,
+        seed: 0
+      )
+    } catch {
+      throw LiteRtModuleError(
+        message: self.message(from: error, fallback: "Invalid sampler config.")
+      )
+    }
+
+    let conversationConfig = ConversationConfig(samplerConfig: samplerConfig)
+
+    let conversation: Conversation
+    do {
+      conversation = try await engine.createConversation(with: conversationConfig)
+    } catch {
+      throw LiteRtModuleError(
+        message: self.message(from: error, fallback: "Failed to create LiteRT conversation.")
+      )
+    }
+    self.setActiveConversation(conversation)
+
+    let message = Message(prompt, role: .user)
 
     do {
-      let stream = engine.generateStreaming(
-        prompt: prompt,
-        temperature: temperature,
-        maxTokens: maxTokens
-      )
+      // Conversation is a class (not actor) in v0.12.0 — call directly.
+      let stream = conversation.sendMessageStream(message)
       for try await chunk in stream {
         if !self.isGenerationActive(generationID) {
           throw LiteRtModuleError(message: "LiteRT generation was cancelled.")
         }
-        // LiteRTLM-Swift yields delta chunks already — no cumulative-prefix
-        // normalisation needed (contrast MediaPipe which yields cumulative
-        // text and uses MediaPipeFallbackEngine.normalizeProgress).
-        if !chunk.isEmpty {
-          latestText.append(chunk)
-          await self.emitTokenEvent(text: latestText, delta: chunk, done: false)
+        // v0.12.0 yields Message chunks; .toString flattens text Content
+        // entries. Assumption: chunks are deltas (matches the C-callback
+        // semantics in Conversation.swift:streamCallback). Verify on first
+        // device run — if cumulative, switch to last-chunk-only emit and
+        // adjust the delta computation.
+        let delta = chunk.toString
+        if !delta.isEmpty {
+          latestText.append(delta)
+          await self.emitTokenEvent(text: latestText, delta: delta, done: false)
         }
       }
 
@@ -338,20 +408,31 @@ public final class ExpoLitertLmModule: Module {
     stateQueue.sync { activeGenerationID = nil }
   }
 
-  /// Async unload — invokes @MainActor LiteRTLMEngine.unload() before nilling
-  /// references. Use in async contexts (loadModelAsync, unloadModelAsync).
+  private func setActiveConversation(_ conversation: Conversation) {
+    stateQueue.sync { activeConversation = conversation }
+  }
+
+  private func clearActiveConversation() {
+    stateQueue.sync { activeConversation = nil }
+  }
+
+  private func cancelActiveConversation() async {
+    let conv = stateQueue.sync { activeConversation }
+    // Conversation is a class with a sync `cancel() throws` — call directly.
+    try? conv?.cancel()
+  }
+
+  /// Async unload — drops engine references; the Engine actor's deinit
+  /// invokes the native engine delete.
   private func unloadInternalAsync() async {
-    if let engine = litertLmEngine {
-      await MainActor.run { engine.unload() }
-    }
     unloadInternalSync()
   }
 
-  /// Synchronous unload — drops references only. The LiteRTLMEngine deinit
-  /// queues the C deletes on its inferenceQueue, so memory still releases.
-  /// Use in non-async contexts (OnDestroy).
+  /// Synchronous unload — drops references only. The Engine actor's deinit
+  /// queues the native delete; memory still releases.
   private func unloadInternalSync() {
     litertLmEngine = nil
+    activeConversation = nil
     #if EXPO_LITERTLM_MEDIAPIPE_FALLBACK
     mediaPipeFallback?.unload()
     mediaPipeFallback = nil

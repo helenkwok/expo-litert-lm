@@ -1,5 +1,51 @@
 # Changelog
 
+## Unreleased — `feat/litert-v0.12` spike branch — 2026-05-19
+
+> Spike branch: not published to npm. Posted to the Kaggle Gemma 4 Good
+> Hackathon discussion forum as a community contribution after Google
+> released LiteRT-LM v0.12.0 on 2026-05-18. See branch:
+> https://github.com/helenkwok/expo-litert-lm/tree/feat/litert-v0.12
+
+- **iOS: migrated to Google's first-party LiteRT-LM Swift APIs (v0.12.0).**
+  Replaces the vendored community `LiteRTLM-Swift` fork + rewrap pipeline.
+  Single `CLiteRTLM.xcframework` (Google's release, SHA-pinned to
+  `3c2a11ecc8511d1e74efa7ca308dc7130c95223325c33212337ffb0563b79cde`) bundles
+  Metal accelerator + TopK Metal sampler + GemmaModelConstraintProvider
+  statically. `CFBundleShortVersionString` / `CFBundleVersion` set correctly
+  by upstream — the rewrap step is no longer needed.
+- **iOS: Metal GPU acceleration available** (was deferred to v1.2 under the
+  community fork because of upstream `LiteRTLM-Swift` issues #5 / #7). Set
+  `preferredBackend: "gpu"` in `loadModelAsync` to opt in. Pending device
+  RAM verification on iPhone SE 3rd gen before recommending as default.
+- **Spike scope (iOS):** text-only generation. Vision / audio / multimodal /
+  persistent conversation paths are explicitly stubbed in
+  `ExpoLitertLmModule.swift` and throw "not yet supported in v0.12.0 spike"
+  with a tracking reference. Wiring follows once the text path is verified
+  on SE 3rd gen.
+- **Web JS API (follow-up):** Google v0.12.0 also ships Web JavaScript APIs
+  (WebGPU / CPU). Adding `expo-litert-lm` web platform support is tracked as
+  a follow-up; the Kaggle thread will be updated when it lands.
+- **API port:** `LiteRTLMEngine(modelPath:backend:textOnly:)` →
+  `Engine(EngineConfig)`; `engine.load()` async → `engine.initialize()` on
+  the actor; `engine.generateStreaming()` → `engine.createConversation()` +
+  `conversation.sendMessageStream(Message)`; sampler params moved per-call →
+  per-conversation `SamplerConfig`. JS-facing API (`loadModelAsync`,
+  `generateResponseAsync`, `onToken` event, cancel/unload) is unchanged.
+- **Retired:** `ios/Sources/LiteRTLMSwift/` (community `LiteRTLMEngine` +
+  `ModelDownloader`), `ios/BinaryPods/GemmaModelConstraintProviderBinary.podspec`
+  (GMCP now linked into `CLiteRTLM`), `ios/BinaryPods/Frameworks/rewrap-manifest.json`,
+  `scripts/sync-litertlm-swift.sh` (moved to `.deprecated`).
+- **Added:** `scripts/fetch-litert-lm.sh` — pinned-SHA fetch for the v0.12.0
+  xcframework from `google-ai-edge/LiteRT-LM` releases. Run before
+  `pod install` (xcframework is gitignored, published to npm).
+- **Added:** `NOTICE` — Apache 2.0 attribution for Google's vendored Swift
+  sources under `ios/Sources/LiteRTLM/` and the `CLiteRTLM.xcframework`
+  binary asset.
+- **Build verification status:** podspec + Swift port are static-audit clean.
+  End-to-end build + one Gemma 3 1B INT4 generation on iPhone SE 3rd gen is
+  pending; that gates any npm release.
+
 ## 0.2.0 — 2026-05-16
 
 - **Added:** iOS LiteRT-LM text generation via vendored LiteRTLM-Swift / `CLiteRTLM.xcframework`. Validated on iPhone SE 3rd gen with `gemma3-1b-it-int4.litertlm` (Gemma 3 1B INT4). Gemma 4 E2B remains Android-validated only; it was not tested on SE 3rd gen because of memory limits.
