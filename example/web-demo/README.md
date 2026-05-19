@@ -8,14 +8,30 @@ also verifies the web path of `expo-litert-lm` will work.
 
 ## How to run
 
-1. **Drop a model in this directory.** The page defaults to a relative URL of
-   `./gemma3-1b-it-int4.litertlm`:
+1. **Drop a model in this directory.** The page defaults to
+   `./gemma-4-E2B-it.litertlm` — the more interesting test for a desktop
+   browser, since web targets capable platforms (laptops/desktops) where the
+   floor-device RAM constraints of mobile don't apply. You can also pick
+   `./gemma3-1b-it-int4.litertlm` from the dropdown for a side-by-side with
+   the iOS measurements.
+
+   `litert-community/*` models on Hugging Face are **gated** — `curl -L`
+   alone returns a 137-byte "Access denied" HTML page, which the engine
+   then rejects with `Invalid magic number`. Use the authenticated HF CLI
+   instead:
 
    ```bash
-   # Download the 584 MB INT4 model (Apache 2.0 + Gemma terms, ~1 min on broadband):
-   curl -L -o gemma3-1b-it-int4.litertlm \
-     https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/gemma3-1b-it-int4.litertlm
+   # Install once if you don't have it: pip install -U "huggingface_hub[cli]"
+   # Log in once: hf auth login (paste an HF token with read access)
+
+   # Then:
+   hf download litert-community/Gemma-4-E2B-IT gemma-4-E2B-it.litertlm --local-dir .
+   # And/or:
+   hf download litert-community/Gemma3-1B-IT gemma3-1b-it-int4.litertlm --local-dir .
    ```
+
+   If you've already downloaded these for the native build, a symlink works
+   just as well: `ln -s ~/Downloads/<file> .`.
 
 2. **Serve with COOP/COEP headers.** WASM threading needs `SharedArrayBuffer`,
    which requires the page to be *cross-origin isolated*. Stock `npx
@@ -63,5 +79,6 @@ forwards HF responses with the right headers.
 | Page says "Not cross-origin isolated" | You bypassed `serve.mjs`. Use it, or set both `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` on your own server. |
 | Page says "No WebGPU" | Your browser does not expose `navigator.gpu`. Try Chrome / Edge 113+ or Safari 18+. |
 | Console: "RuntimeError: WebAssembly.Memory(): could not allocate memory" | Your tab does not have enough heap. Close other tabs, restart browser, or try a smaller model. |
-| Model 404s | Filename mismatch. The page defaults to `./gemma3-1b-it-int4.litertlm`; edit the URL field if your file is named differently. |
+| Output box shows red "Invalid magic number or failed to read" | Most likely the file at the model URL is a 137-byte HF "Access denied" HTML page, not a real `.litertlm`. Re-download with `hf` CLI (logged in) or symlink from an authenticated copy. Run `xxd <file> \| head -1` — real models start with `4c49 5445 5254 4c4d` (`LITERTLM`). |
+| Model 404s | Filename mismatch. Edit the Model URL field or rename the file. |
 | Output stops after 1 token | WebGPU adapter crashed. Toggle to CPU backend and re-run. Check the browser's DevTools → Console. |
