@@ -78,6 +78,8 @@ overhead** instead of full model size.
 | `.litertlm` | Gemma 3 1B INT4 (557 MB) | WebGPU | 562 MB | — | — | ❌ Compile error in `llm_litert_compiled_model_executor.cc:1928` — model lacks WebGPU artifacts |
 | `.litertlm` | Gemma 4 E2B (2.4 GB) | both | 2455 MB | — | — | ❌ `Array buffer allocation failed` — exceeds 32-bit WASM linear memory cap |
 | `.task` | Gemma 3 1B INT4 web (668 MB) | GPU | **301 MB** | 95 ms | 468 chars/s (≈ 116.9 tok/s) | ✅✅ 54 chunks |
+| `.task` | Gemma 3 1B INT4 web (668 MB) | GPU, Cloudflare Pages first hit | 304 MB | 11.5 s | 52 chars/s (≈ 13 tok/s) | ⚠️ Cold cache — jsDelivr WASM fetch + WebGPU shader compile dominate |
+| `.task` | Gemma 3 1B INT4 web (668 MB) | GPU, Cloudflare Pages warmed | 298 MB | **50 ms** | 478 chars/s (≈ 119 tok/s) | ✅ Matches localhost after first hit |
 | `.task` | Gemma 3 1B INT4 web (668 MB) | CPU | ~470 MB | 92 ms | 469 chars/s (≈ 117.2 tok/s) | ✅✅ 54 chunks |
 | `.task` | Gemma 4 E2B web (1.91 GB) | GPU | **231 MB** | 191 ms | 234 chars/s (≈ 58.5 tok/s) | ✅ 95 chunks |
 | `.task` | Gemma 4 E2B web (1.91 GB) | CPU | **470 MB** | 143 ms | 233 chars/s (≈ 58.3 tok/s) | ✅ |

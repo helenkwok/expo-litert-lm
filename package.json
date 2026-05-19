@@ -1,6 +1,6 @@
 {
   "name": "expo-litert-lm",
-  "version": "0.2.0-rc.0",
+  "version": "0.3.0-rc.0",
   "description": "Expo Modules bindings for on-device LLM inference. Android: Google's litert-lm-android (LiteRT-LM Engine + MediaPipe Tasks GenAI). iOS: Google's first-party LiteRT-LM Swift APIs (v0.12.0+) with Metal GPU acceleration; MediaPipe Tasks GenAI available as opt-in MediaPipeFallback subspec. Web: Google's @litert-lm/core for .litertlm (WebGPU/CPU) + @mediapipe/tasks-genai for .task — both opt-in peer deps. Supports .litertlm and .task model formats.",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",

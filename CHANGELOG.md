@@ -1,11 +1,18 @@
 # Changelog
 
-## Unreleased — `feat/litert-v0.12` spike branch — 2026-05-19
+## 0.3.0-rc.0 — 2026-05-19
 
-> Spike branch: not published to npm. Posted to the Kaggle Gemma 4 Good
-> Hackathon discussion forum as a community contribution after Google
-> released LiteRT-LM v0.12.0 on 2026-05-18. See branch:
-> https://github.com/helenkwok/expo-litert-lm/tree/feat/litert-v0.12
+> Published to npm under the `next` dist-tag. `latest` remains `0.1.2` for
+> now — promote `0.3.0-rc.0` → `latest` after a soak period.
+>
+> Branch: https://github.com/helenkwok/expo-litert-lm/tree/feat/litert-v0.12
+> Live web demo: https://expo-litert-lm.pages.dev/
+
+**Headline:** first-party Google LiteRT-LM v0.12.0 across iOS (Metal-GPU
+capable) + a new Web platform target (dual runtime — `.litertlm` →
+`@litert-lm/core`, `.task` → `@mediapipe/tasks-genai`, mirroring the
+native LiteRT-default + MediaPipeFallback architecture). JS-facing API
+unchanged from 0.2.0-rc.0 — consumers don't need code changes.
 
 - **iOS: migrated to Google's first-party LiteRT-LM Swift APIs (v0.12.0).**
   Replaces the vendored community `LiteRTLM-Swift` fork + rewrap pipeline.
