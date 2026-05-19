@@ -56,9 +56,11 @@
     the same Gemma 4 E2B model that fails on `.litertlm` runs cleanly on the
     `.task` path. With streaming `ReadableStreamDefaultReader` (added below),
     JS-heap peak is 231 MB GPU / 470 MB CPU — much smaller than the model
-    itself because MediaPipe streams chunks straight into WASM. Output
-    exhibits multilingual mixing (English/Chinese/Thai) that's likely a
-    missing chat-turn template, not a wrapper bug.
+    itself because MediaPipe streams chunks straight into WASM. On the
+    anti-scam prompt the output drifted into Chinese and Thai mid-paragraph;
+    on a simpler prompt (`"hi"`) the same model produced clean monolingual
+    English — so that's a prompt-dependent quirk of Gemma 4's multilingual
+    training, not a routing or wrapper bug.
   - `.task` Gemma 4 E4B web (2.83 GB) loads (peak 424 MB GPU / 382 MB CPU)
     but output is numeric gibberish — `@mediapipe/tasks-genai` v0.10.27
     doesn't fully support 4B Gemma in this build. File loads, weights stream

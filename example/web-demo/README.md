@@ -77,8 +77,9 @@ overhead** instead of full model size.
 | `.litertlm` | Gemma 4 E2B (2.4 GB) | both | 2455 MB | — | — | ❌ `Array buffer allocation failed` — exceeds 32-bit WASM linear memory cap |
 | `.task` | Gemma 3 1B INT4 web (668 MB) | GPU | **301 MB** | 95 ms | 468 chars/s (≈ 116.9 tok/s) | ✅✅ 54 chunks |
 | `.task` | Gemma 3 1B INT4 web (668 MB) | CPU | ~470 MB | 92 ms | 469 chars/s (≈ 117.2 tok/s) | ✅✅ 54 chunks |
-| `.task` | Gemma 4 E2B web (1.91 GB) | GPU | **231 MB** | 191 ms | 234 chars/s (≈ 58.5 tok/s) | ✅ 95 chunks (multilingual mixing in output) |
-| `.task` | Gemma 4 E2B web (1.91 GB) | CPU | **470 MB** | 143 ms | 233 chars/s (≈ 58.3 tok/s) | ✅ Same multilingual mixing |
+| `.task` | Gemma 4 E2B web (1.91 GB) | GPU | **231 MB** | 191 ms | 234 chars/s (≈ 58.5 tok/s) | ✅ 95 chunks |
+| `.task` | Gemma 4 E2B web (1.91 GB) | CPU | **470 MB** | 143 ms | 233 chars/s (≈ 58.3 tok/s) | ✅ |
+| `.task` | Gemma 4 E2B web (1.91 GB) | GPU, prompt = "hi" | 369 MB | 211 ms | 264 chars/s (≈ 66 tok/s) | ✅ Clean monolingual English output |
 | `.task` | Gemma 4 E4B web (2.83 GB) | GPU | **424 MB** | 5.2 s | 16 chars/s (≈ 4.1 tok/s) | ⚠️ Loads but output is numeric gibberish — upstream MediaPipe doesn't fully support 4B Gemma in v0.10.27 |
 | `.task` | Gemma 4 E4B web (2.83 GB) | CPU | 382 MB | 272 ms | 10 chars/s (≈ 2.5 tok/s) | ⚠️ Same — output garbage |
 
@@ -89,10 +90,10 @@ overhead** instead of full model size.
 3. **Streaming `ReadableStreamDefaultReader` is strictly better than `arrayBuffer()`** for the MediaPipe path: same output, same speed, ~10× lower JS heap (Gemma 4 E2B went from 1921 MB peak to 231 MB peak GPU / 470 MB peak CPU).
 4. **Gemma 4 E2B is fully viable on web via `.task`** — the same model that the LiteRT-LM path can't load runs at ~58 tok/s on either backend with very modest heap.
 
-**Known follow-ups (not blockers):**
+**Notes:**
 
-- **Multilingual mixing on Gemma 4 E2B output** — almost certainly missing Gemma 4 chat-turn template (`<start_of_turn>user\n...\n<end_of_turn>\n<start_of_turn>model\n`). Wrapper-side fix in a follow-up.
-- **Gemma 4 E4B output is gibberish** — even though the model loads (424 MB peak) and produces chunks, the output is numeric tokens not properly decoded. This is an upstream `@mediapipe/tasks-genai` limitation; v0.10.27 doesn't fully support 4B Gemma. File a tracking issue once a clean repro is isolated.
+- The Gemma 4 E2B anti-scam prompt earlier in this matrix produced output that drifted into Chinese and Thai mid-paragraph. Subsequent testing with a simpler prompt (`"hi"`) produced clean monolingual English, so that drift is the model reaching for multilingual training data on a topic with heavy multilingual coverage, not a bug in our routing or in `@mediapipe/tasks-genai`. Applying a Gemma 4 chat-turn template would probably tighten output formatting but isn't required for usability.
+- **Gemma 4 E4B output is gibberish** — model loads (424 MB peak), inference runs, but output is numeric tokens that aren't properly decoded. This is an upstream `@mediapipe/tasks-genai` v0.10.27 limitation that does not yet support 4B-param Gemma. File a tracking issue once a clean repro is isolated.
 
 ## What the page measures
 
