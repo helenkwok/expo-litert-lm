@@ -27,13 +27,10 @@
   <div id="caps" class="warn">Checking environment&hellip;</div>
 
   <div class="row">
-    <label for="modelUrl">Model URL:</label>
-    <input id="modelUrl" type="text" value="./gemma-4-E2B-it.litertlm" list="modelPresets" />
-    <datalist id="modelPresets">
-      <option value="./gemma-4-E2B-it.litertlm">Gemma 4 E2B (2.4 GB) — desktop default</option>
-      <option value="./gemma3-1b-it-int4.litertlm">Gemma 3 1B INT4 (557 MB) — matches iOS test</option>
-    </datalist>
+    <label for="modelFile">Model file:</label>
+    <input id="modelFile" type="file" accept=".litertlm,application/octet-stream" />
   </div>
+  <div id="modelMeta" class="sub" style="margin: -0.25rem 0 0.75rem 120px;">(pick a .litertlm — Gemma 4 E2B or Gemma 3 1B INT4 from your filesystem)</div>
   <div class="row">
     <label for="backend">Backend:</label>
     <select id="backend">
@@ -77,11 +74,26 @@
     } else if (!isCOI) {
       capsEl.innerHTML = '<strong>Not cross-origin isolated</strong> — page must be served with COOP/COEP headers so SharedArrayBuffer is available (the WASM runtime needs threading). See <code>README.md</code> &rarr; Web setup.';
     } else {
-      capsEl.innerHTML = 'WebGPU + crossOriginIsolated &check; — environment looks good.';
+      capsEl.innerHTML = 'WebGPU + crossOriginIsolated &check; — environment looks good. Pick a .litertlm model below.';
       capsEl.style.background = '#d4edda';
       capsEl.style.borderColor = '#9fd4ad';
-      runBtn.disabled = false;
     }
+
+    // Enable Run only after a file is picked AND the environment is good.
+    let pickedFile = null;
+    const fileInput = $('modelFile');
+    const modelMeta = $('modelMeta');
+    fileInput.addEventListener('change', () => {
+      pickedFile = fileInput.files?.[0] ?? null;
+      if (pickedFile) {
+        const mb = (pickedFile.size / 1024 / 1024).toFixed(1);
+        modelMeta.textContent = `${pickedFile.name} · ${mb} MB`;
+        runBtn.disabled = !(hasGpu && isCOI);
+      } else {
+        modelMeta.textContent = '(pick a .litertlm — Gemma 4 E2B or Gemma 3 1B INT4 from your filesystem)';
+        runBtn.disabled = true;
+      }
+    });
 
     let activeConversation = null;
     let activeEngine = null;
@@ -98,16 +110,18 @@
     };
 
     runBtn.onclick = async () => {
+      if (!pickedFile) {
+        errEl.textContent = 'Pick a .litertlm file first.';
+        return;
+      }
       runBtn.disabled = true;
       cancelBtn.disabled = false;
       outEl.textContent = '';
       errEl.textContent = '';
       peakMb = 0;
       const backend = $('backend').value === 'cpu' ? Backend.CPU : Backend.GPU;
-      const modelUrl = $('modelUrl').value;
       const prompt = $('prompt').value;
       const pollHandle = setInterval(samplePerf, 250);
-      const t0 = performance.now();
       let firstTokenAt = null;
       let tokenCount = 0;
       try {
@@ -115,7 +129,11 @@
         if (activeConversation) { try { await activeConversation.delete(); } catch {} activeConversation = null; }
         if (activeEngine) { try { await activeEngine.delete(); } catch {} activeEngine = null; }
         metaEl.textContent = 'loading model…';
-        activeEngine = await Engine.create({ model: modelUrl, backend });
+        // File.stream() returns a ReadableStream<Uint8Array>, which is one of
+        // the accepted shapes for EngineSettings.model. No URL / network /
+        // CORS / COOP-CORP coordination needed — the bytes come straight from
+        // the user's filesystem via the picker.
+        activeEngine = await Engine.create({ model: pickedFile.stream(), backend });
         activeConversation = await activeEngine.createConversation();
         const tAfterLoad = performance.now();
         const stream = activeConversation.sendMessageStreaming(prompt);
