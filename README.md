@@ -15,6 +15,7 @@ Native bridge for Expo SDK 55+ apps to load and run `.litertlm` and `.task` mode
 - Android uses Google's official `litertlm-android:0.11.0` SDK plus MediaPipe Tasks GenAI.
 - iOS uses vendored LiteRTLM-Swift wrapping the LiteRT-LM C API (`CLiteRTLM.xcframework` + `GemmaModelConstraintProvider.xcframework`, rewrapped from LiteRTLM-Swift `v0.10.2+rewrap.5`).
 - iOS `.task` support is available only through the opt-in `MediaPipeFallback` CocoaPods subspec; the default iOS install is LiteRT-LM only.
+- **Web (preview, on `feat/litert-v0.12` branch)** uses Google's first-party [`@litert-lm/core`](https://www.npmjs.com/package/@litert-lm/core) v0.12.0+ (WebGPU/CPU) as an opt-in peer dependency. JS-facing API is identical to the native shape — same `loadLiteRtModel` / `generateLiteRtResponse` / `addLiteRtTokenListener` work on web. Requires WebGPU and a cross-origin-isolated context (COOP/COEP headers for SharedArrayBuffer). See [`example/web-demo/`](./example/web-demo/) for a minimal browser smoke test and the v0.12.0 entry in [`CHANGELOG.md`](./CHANGELOG.md) for spike scope.
 
 MIT licensed.
 

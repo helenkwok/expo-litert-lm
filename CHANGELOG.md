@@ -23,9 +23,15 @@
   `ExpoLitertLmModule.swift` and throw "not yet supported in v0.12.0 spike"
   with a tracking reference. Wiring follows once the text path is verified
   on SE 3rd gen.
-- **Web JS API (follow-up):** Google v0.12.0 also ships Web JavaScript APIs
-  (WebGPU / CPU). Adding `expo-litert-lm` web platform support is tracked as
-  a follow-up; the Kaggle thread will be updated when it lands.
+- **Web platform support (preview):** opt-in `@litert-lm/core` v0.12.0+ peer
+  dependency wires the same JS-facing API (`loadLiteRtModel`,
+  `generateLiteRtResponse`, `addLiteRtTokenListener`, `cancelLiteRtGeneration`,
+  `unloadLiteRtModel`) onto the Web target via a new
+  `src/ExpoLitertLmModule.web.ts` shim. WebGPU + cross-origin-isolation
+  required. New `example/web-demo/` provides a zero-dependency Node ESM static
+  server with the COOP/COEP headers SharedArrayBuffer needs, plus an HTML
+  page that exercises the underlying `@litert-lm/core` package end-to-end.
+  Audio / multimodal stubbed (parallel to iOS spike scope).
 - **API port:** `LiteRTLMEngine(modelPath:backend:textOnly:)` →
   `Engine(EngineConfig)`; `engine.load()` async → `engine.initialize()` on
   the actor; `engine.generateStreaming()` → `engine.createConversation()` +

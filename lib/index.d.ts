@@ -26,7 +26,10 @@ export type LiteRtLoadResult = {
 };
 /**
  * Whether the device is capable of running LiteRT-LM models.
- * On Android this requires API 31+ (Android 12). Returns `false` on web.
+ * On Android this requires API 31+ (Android 12).
+ * On web this requires WebGPU + crossOriginIsolated (SharedArrayBuffer) — see
+ * the README "Web setup" section for the COOP/COEP headers your dev/prod
+ * server needs.
  */
 export declare function isLiteRtAvailable(): Promise<boolean>;
 /**

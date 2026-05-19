@@ -58,14 +58,35 @@ const DEFAULT_MAX_TOKENS = 2048;
 const DEFAULT_TOP_K = 40;
 const DEFAULT_TEMPERATURE = 0.8;
 
+// Web shim — duck-typed to NativeExpoLitertLmModule + an addListener method.
+// See src/ExpoLitertLmModule.web.ts. Imported lazily on Platform.OS === 'web'
+// so the WASM-bearing @litert-lm/core peer dep is never pulled into a native
+// bundle.
+type WebModuleShape = NativeExpoLitertLmModule & {
+  addListener: (
+    eventName: 'onToken',
+    listener: (event: LiteRtTokenEvent) => void
+  ) => { remove: () => void };
+};
+
 let cachedNative: NativeExpoLitertLmModule | null = null;
 let cachedEmitter: LegacyEventEmitter | null = null;
+let cachedWeb: WebModuleShape | null = null;
+
+function webModule(): WebModuleShape {
+  if (cachedWeb) return cachedWeb;
+  // Static import — Metro/webpack resolves the .web.ts variant when
+  // Platform.OS === 'web' anyway; using a dynamic import here would not give
+  // any extra bundle isolation and would force every caller to be async.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const mod = require('./ExpoLitertLmModule.web').default as WebModuleShape;
+  cachedWeb = mod;
+  return mod;
+}
 
 function nativeModule(): NativeExpoLitertLmModule {
   if (Platform.OS === 'web') {
-    throw new Error(
-      'expo-litert-lm: on-device LiteRT-LM is only available in native apps, not web.'
-    );
+    return webModule();
   }
   if (cachedNative) return cachedNative;
   try {
@@ -79,7 +100,15 @@ function nativeModule(): NativeExpoLitertLmModule {
   }
 }
 
-function eventEmitter(): LegacyEventEmitter {
+function eventEmitter(): {
+  addListener: (
+    eventName: 'onToken',
+    listener: (event: LiteRtTokenEvent) => void
+  ) => EventSubscription;
+} {
+  if (Platform.OS === 'web') {
+    return webModule();
+  }
   if (cachedEmitter) return cachedEmitter;
   const created = new LegacyEventEmitter(nativeModule() as never);
   cachedEmitter = created;
@@ -88,10 +117,12 @@ function eventEmitter(): LegacyEventEmitter {
 
 /**
  * Whether the device is capable of running LiteRT-LM models.
- * On Android this requires API 31+ (Android 12). Returns `false` on web.
+ * On Android this requires API 31+ (Android 12).
+ * On web this requires WebGPU + crossOriginIsolated (SharedArrayBuffer) — see
+ * the README "Web setup" section for the COOP/COEP headers your dev/prod
+ * server needs.
  */
 export async function isLiteRtAvailable(): Promise<boolean> {
-  if (Platform.OS === 'web') return false;
   return nativeModule().isAvailableAsync();
 }
 
@@ -141,7 +172,6 @@ export async function generateLiteRtAudioResponse(
  * Cancel an in-flight generation. Safe to call when no generation is active.
  */
 export async function cancelLiteRtGeneration(): Promise<void> {
-  if (Platform.OS === 'web') return;
   await nativeModule().cancelGenerateResponseAsync();
 }
 
@@ -149,7 +179,6 @@ export async function cancelLiteRtGeneration(): Promise<void> {
  * Unload the active model and release engine resources.
  */
 export async function unloadLiteRtModel(): Promise<void> {
-  if (Platform.OS === 'web') return;
   await nativeModule().unloadModelAsync();
 }
 
@@ -161,7 +190,7 @@ export async function unloadLiteRtModel(): Promise<void> {
 export function addLiteRtTokenListener(
   listener: (event: LiteRtTokenEvent) => void
 ): EventSubscription {
-  return eventEmitter().addListener<LiteRtTokenEvent>('onToken', listener);
+  return eventEmitter().addListener('onToken', listener);
 }
 
 /**
