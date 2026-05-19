@@ -1,0 +1,14 @@
+# Cloudflare Pages / Netlify static headers.
+#
+# Sets the COOP/COEP/CORP combination required for SharedArrayBuffer (which
+# the @litert-lm/core and @mediapipe/tasks-genai WASM runtimes use for
+# threading). With these set server-side, the bundled
+# coi-serviceworker.js becomes a no-op fallback — kept for hosts that can't
+# set custom headers (e.g. GitHub Pages).
+#
+# `*` matches every path under the Pages domain.
+
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+  Cross-Origin-Resource-Policy: same-origin

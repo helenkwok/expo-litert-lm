@@ -114,29 +114,51 @@ overhead** instead of full model size.
   prefill / buffering with the current API surface; that's why this page
   does not display a `tok/s` figure as if it were measured precisely.
 
-## Hosting on GitHub Pages (or any static host)
+## Hosting (static, free)
 
-This whole directory is a static app — no build step. The trick to making
-it work on hosts that can't set custom response headers (GitHub Pages,
-Netlify free tier, etc.) is `coi-serviceworker.js` (vendored here, MIT,
+This whole directory is a static app — no build step. The only requirement
+is that the host sends the right COOP/COEP headers so `SharedArrayBuffer`
+is available (the WASM runtimes need it). Two deploy paths are wired up:
+
+### Option A — Cloudflare Pages (recommended)
+
+Cloudflare Pages can set custom response headers via a static `_headers`
+file (already included), so cross-origin isolation works **without any
+client-side service-worker workaround**. Free tier covers it: unlimited
+static requests, 500 builds/month, free custom domains, no Workers needed.
+
+1. cloudflare.com → Workers & Pages → **Create application → Pages →
+   Connect to Git** → pick `helenkwok/expo-litert-lm`.
+2. Build settings:
+   - **Production branch:** `main` (or whichever branch you want live)
+   - **Build command:** *(leave blank — pure static)*
+   - **Build output directory:** `example/web-demo`
+3. Deploy. The included `_headers` file is picked up automatically and sets
+   COOP/COEP for every path.
+
+Once live, the URL will be something like
+`https://expo-litert-lm.pages.dev/`.
+
+### Option B — GitHub Pages
+
+GitHub Pages can't set custom response headers, so cross-origin isolation
+falls to `coi-serviceworker.js` (vendored here, MIT,
 [gzuidhof/coi-serviceworker](https://github.com/gzuidhof/coi-serviceworker)).
 It registers a service worker that injects COOP/COEP from inside the
-browser, making `crossOriginIsolated` and therefore `SharedArrayBuffer`
-available even when the server itself can't.
+browser, making the demo work without server-side support.
 
-**To enable Pages for this repo:**
-
-1. Repo Settings → Pages → Build and deployment → Source: **"GitHub Actions"**.
-2. Merge a change that touches `example/web-demo/**` into `main` (or run the
-   workflow manually from the Actions tab). The
+1. Repo Settings → Pages → Build and deployment → Source:
+   **"GitHub Actions"**.
+2. Merge a change that touches `example/web-demo/**` into `main` (or run
+   the workflow manually from the Actions tab). The
    [`deploy-web-demo`](../../.github/workflows/deploy-web-demo.yml) workflow
-   stages `index.html`, `coi-serviceworker.js`, and this README into
-   `_site/`, then publishes.
+   stages `index.html`, `coi-serviceworker.js`, `_headers` (harmless on
+   Pages, used by Cloudflare) and this README into `_site/`, then publishes.
 3. First visit installs the SW and reloads the page once. Subsequent loads
    are cross-origin-isolated immediately.
 
-`serve.mjs` is for local dev only and is intentionally not deployed —
-Pages serves static files itself, with the SW handling the headers.
+Either way, `serve.mjs` is for local dev only and is intentionally not
+deployed — both Pages services serve static files themselves.
 
 ## Why the file picker instead of a URL?
 
