@@ -1,5 +1,7 @@
 # Web smoke test for `expo-litert-lm`
 
+🌐 **Live demo:** [expo-litert-lm.pages.dev](https://expo-litert-lm.pages.dev/) (Cloudflare Pages, free tier, no Workers — just `_headers` + static files)
+
 This static HTML page exercises both web runtimes that `expo-litert-lm`'s web
 target routes between (see `src/ExpoLitertLmModule.web.ts`):
 
