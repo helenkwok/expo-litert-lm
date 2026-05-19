@@ -1,0 +1,65 @@
+# Deploy example/web-demo/ to GitHub Pages.
+#
+# The demo is fully static — three files (index.html, coi-serviceworker.js,
+# serve.mjs) — plus a README. We don't ship serve.mjs to Pages (Pages serves
+# static files itself), but everything else goes.
+#
+# COOP/COEP headers required by the @litert-lm/core / @mediapipe/tasks-genai
+# WASM runtimes are injected client-side by coi-serviceworker.js, since
+# GitHub Pages cannot set custom response headers.
+#
+# Triggers:
+#   - push to main affecting example/web-demo/**
+#   - manual dispatch
+#
+# Enable on the repo:
+#   Settings → Pages → Build and deployment → Source: "GitHub Actions"
+#
+name: Deploy web demo to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'example/web-demo/**'
+      - '.github/workflows/deploy-web-demo.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stage demo
+        run: |
+          mkdir -p _site
+          # serve.mjs is a local-dev convenience; Pages serves files directly.
+          cp example/web-demo/index.html _site/
+          cp example/web-demo/coi-serviceworker.js _site/
+          cp example/web-demo/README.md _site/
+          # Tell Jekyll (Pages' default processor) to leave the files alone.
+          touch _site/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

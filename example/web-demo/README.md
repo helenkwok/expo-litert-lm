@@ -114,6 +114,30 @@ overhead** instead of full model size.
   prefill / buffering with the current API surface; that's why this page
   does not display a `tok/s` figure as if it were measured precisely.
 
+## Hosting on GitHub Pages (or any static host)
+
+This whole directory is a static app — no build step. The trick to making
+it work on hosts that can't set custom response headers (GitHub Pages,
+Netlify free tier, etc.) is `coi-serviceworker.js` (vendored here, MIT,
+[gzuidhof/coi-serviceworker](https://github.com/gzuidhof/coi-serviceworker)).
+It registers a service worker that injects COOP/COEP from inside the
+browser, making `crossOriginIsolated` and therefore `SharedArrayBuffer`
+available even when the server itself can't.
+
+**To enable Pages for this repo:**
+
+1. Repo Settings → Pages → Build and deployment → Source: **"GitHub Actions"**.
+2. Merge a change that touches `example/web-demo/**` into `main` (or run the
+   workflow manually from the Actions tab). The
+   [`deploy-web-demo`](../../.github/workflows/deploy-web-demo.yml) workflow
+   stages `index.html`, `coi-serviceworker.js`, and this README into
+   `_site/`, then publishes.
+3. First visit installs the SW and reloads the page once. Subsequent loads
+   are cross-origin-isolated immediately.
+
+`serve.mjs` is for local dev only and is intentionally not deployed —
+Pages serves static files itself, with the SW handling the headers.
+
 ## Why the file picker instead of a URL?
 
 The previous iteration of this page took a model URL and fetched it. That

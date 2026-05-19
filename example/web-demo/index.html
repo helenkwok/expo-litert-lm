@@ -4,6 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>expo-litert-lm — Web smoke test</title>
+  <!--
+    coi-serviceworker (MIT, gzuidhof) — registers a service worker that
+    injects COOP/COEP headers from inside the browser, making
+    `crossOriginIsolated` true even when the hosting environment (e.g.
+    GitHub Pages) can't set those headers itself. On a server that already
+    sends COOP/COEP (like serve.mjs in this dir), this is a no-op. Must
+    load before any other script so it can reload the page on first visit
+    if needed.
+  -->
+  <script src="coi-serviceworker.js"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
     h1 { font-size: 1.4rem; margin-bottom: 0.25rem; }
