@@ -50,6 +50,8 @@ const TEMPERATURE = 0.7;
 
 type Sample = { ts_ms: number; phys_footprint_mb: number };
 
+type Backend = 'cpu' | 'gpu';
+
 export default function App() {
   const [modelPath, setModelPath] = useState<string | null>(null);
   const [output, setOutput] = useState<string>('');
@@ -58,10 +60,16 @@ export default function App() {
   const [currentMb, setCurrentMb] = useState<number>(0);
   const [cancelLatencyMs, setCancelLatencyMs] = useState<number | null>(null);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [backend, setBackend] = useState<Backend>('cpu');
+  const [ttftMs, setTtftMs] = useState<number | null>(null);
+  const [tokPerSec, setTokPerSec] = useState<number | null>(null);
 
   const samplesRef = useRef<Sample[]>([]);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cancelTsRef = useRef<number | null>(null);
+  const generationStartRef = useRef<number | null>(null);
+  const firstTokenTsRef = useRef<number | null>(null);
+  const tokenCountRef = useRef<number>(0);
 
   const finishCancelLatency = () => {
     if (cancelTsRef.current === null) return;
@@ -72,8 +80,28 @@ export default function App() {
   useEffect(() => {
     const sub = addLiteRtTokenListener((event: LiteRtTokenEvent) => {
       setOutput(event.text);
-      if (cancelTsRef.current !== null && event.done) {
-        finishCancelLatency();
+
+      // First non-empty delta marks time-to-first-token.
+      if (
+        firstTokenTsRef.current === null &&
+        generationStartRef.current !== null &&
+        event.delta.length > 0
+      ) {
+        const ts = Date.now();
+        firstTokenTsRef.current = ts;
+        setTtftMs(ts - generationStartRef.current);
+      }
+      if (event.delta.length > 0) {
+        tokenCountRef.current += 1;
+      }
+      if (event.done) {
+        const start = firstTokenTsRef.current;
+        const tokens = tokenCountRef.current;
+        if (start !== null && tokens > 1) {
+          const elapsedSec = (Date.now() - start) / 1000;
+          if (elapsedSec > 0) setTokPerSec(tokens / elapsedSec);
+        }
+        if (cancelTsRef.current !== null) finishCancelLatency();
       }
     });
     return () => sub.remove();
@@ -131,14 +159,21 @@ export default function App() {
     setOutput('');
     setErrorText(null);
     setCancelLatencyMs(null);
+    setTtftMs(null);
+    setTokPerSec(null);
     cancelTsRef.current = null;
+    generationStartRef.current = null;
+    firstTokenTsRef.current = null;
+    tokenCountRef.current = 0;
     startPolling();
     try {
       await loadLiteRtModel(modelPath, {
         maxTokens: MAX_TOKENS,
         topK: TOP_K,
         temperature: TEMPERATURE,
+        preferredBackend: backend,
       });
+      generationStartRef.current = Date.now();
       await generateLiteRtResponse(PREFILL_PROMPT);
     } catch (e) {
       setErrorText(e instanceof Error ? e.message : String(e));
@@ -157,9 +192,9 @@ export default function App() {
 
   return (
     <View style={styles.root}>
-      <Text style={styles.title}>Stage B — Expo bridge spike</Text>
+      <Text style={styles.title}>expo-litert-lm smoke test</Text>
       <Text style={styles.subtitle}>
-        Phase 14 / 14-07 — same model + prompt as Stage A
+        LiteRT-LM v0.12.0 · Gemma 3 1B INT4
       </Text>
 
       <View style={styles.row}>
@@ -171,7 +206,17 @@ export default function App() {
 
       <View style={styles.row}>
         <Button
-          title={running ? 'Running…' : 'Run spike'}
+          title={`Backend: ${backend.toUpperCase()}${
+            running ? '' : ' (tap to toggle)'
+          }`}
+          onPress={() => setBackend(backend === 'cpu' ? 'gpu' : 'cpu')}
+          disabled={running}
+        />
+      </View>
+
+      <View style={styles.row}>
+        <Button
+          title={running ? 'Running…' : 'Run'}
           onPress={runSpike}
           disabled={!modelPath || running}
         />
@@ -181,6 +226,11 @@ export default function App() {
       <View style={styles.metrics}>
         <Text style={styles.peak}>peak {peakMb.toFixed(1)} MB</Text>
         <Text style={styles.current}>now {currentMb.toFixed(1)} MB</Text>
+        <Text style={styles.perf}>
+          backend {backend.toUpperCase()}
+          {ttftMs !== null && ` · ttft ${ttftMs} ms`}
+          {tokPerSec !== null && ` · ${tokPerSec.toFixed(1)} tok/s`}
+        </Text>
         {cancelLatencyMs !== null && (
           <Text style={styles.cancel}>
             Cancel latency: {cancelLatencyMs} ms
@@ -206,6 +256,7 @@ const styles = StyleSheet.create({
   metrics: { marginVertical: 12 },
   peak: { fontSize: 36, fontWeight: '700', color: '#003366' },
   current: { fontSize: 14, color: '#444' },
+  perf: { fontSize: 14, color: '#444', marginTop: 4 },
   cancel: { fontSize: 14, color: '#cc0000', marginTop: 4 },
   outputBox: {
     flex: 1,
