@@ -2,8 +2,11 @@ import type { LiteRtLoadResult, LiteRtPreferredBackend, LiteRtTokenEvent } from 
 type Listener = (event: LiteRtTokenEvent) => void;
 declare class ExpoLitertLmWebModule {
     private litertLm;
-    private engine;
-    private conversation;
+    private mediaPipe;
+    private runtime;
+    private litertLmEngine;
+    private litertLmConversation;
+    private mediaPipeLlm;
     private loadConfig;
     private activeGenerationId;
     private listeners;
@@ -18,8 +21,13 @@ declare class ExpoLitertLmWebModule {
         remove: () => void;
     };
     private emit;
-    private unloadInternal;
+    private loadLitertLm;
+    private generateLitertLm;
+    private loadMediaPipe;
+    private generateMediaPipe;
     private requireLitertLm;
+    private requireMediaPipe;
+    private unloadInternal;
 }
 declare const expoLitertLmWebModule: ExpoLitertLmWebModule;
 export default expoLitertLmWebModule;

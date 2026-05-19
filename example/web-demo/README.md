@@ -1,31 +1,38 @@
-# Web smoke test for `@litert-lm/core` v0.12.0
+# Web smoke test for `expo-litert-lm`
 
-This is a minimal static HTML page that exercises Google's first-party
-`@litert-lm/core` web JS package directly — no Expo / React Native involved.
-It's the underlying capability that `expo-litert-lm`'s web target (see
-`src/ExpoLitertLmModule.web.ts`) wraps, so verifying it works in your browser
-also verifies the web path of `expo-litert-lm` will work.
+This static HTML page exercises both web runtimes that `expo-litert-lm`'s web
+target routes between (see `src/ExpoLitertLmModule.web.ts`):
+
+| File extension | Runtime | Native parity |
+|---|---|---|
+| `.litertlm` | [`@litert-lm/core`](https://www.npmjs.com/package/@litert-lm/core) (WebGPU/CPU) | iOS Core / Android default |
+| `.task` | [`@mediapipe/tasks-genai`](https://www.npmjs.com/package/@mediapipe/tasks-genai) (WebGPU/CPU) | iOS MediaPipeFallback subspec / Android MediaPipe path |
+
+Routing is by **magic-byte sniff** on the first 8 bytes of the picked file
+(`LITERTLM` ASCII → LiteRT-LM, `PK\x03\x04` ZIP magic → MediaPipe Tasks GenAI
+.task archives). The page mirrors that sniff inline so it can run without a
+bundler; the wrapper module uses the same logic.
 
 ## How to run
 
-1. **Have a `.litertlm` file somewhere on your filesystem.** The page uses a
-   file picker — no server-side coordination, no symlinks, no need for the
-   file to live next to the HTML. If you've already downloaded
-   `gemma-4-E2B-it.litertlm` or `gemma3-1b-it-int4.litertlm` for the native
-   build (e.g. in `~/Downloads`), they're ready to use.
+1. **Have a `.litertlm` or `.task` file somewhere on your filesystem.** The
+   page uses a file picker — no server-side coordination, no symlinks, no
+   need for the file to live next to the HTML.
 
-   If you don't have one yet: `litert-community/*` repos on Hugging Face are
-   **gated** — `curl -L` alone returns a 137-byte "Access denied" HTML
-   page. Use the authenticated HF CLI:
+   `litert-community/*` repos on Hugging Face are **gated** — `curl -L`
+   alone returns a 137-byte "Access denied" HTML page. Use the
+   authenticated HF CLI:
 
    ```bash
    # Install once if you don't have it: pip install -U "huggingface_hub[cli]"
    # Log in once: hf auth login (paste an HF token with read access)
 
-   # Then, into any directory you like:
-   hf download litert-community/Gemma-4-E2B-IT gemma-4-E2B-it.litertlm --local-dir ~/Downloads
-   # Or the smaller iOS-comparison model:
+   # LiteRT-LM path (.litertlm):
    hf download litert-community/Gemma3-1B-IT gemma3-1b-it-int4.litertlm --local-dir ~/Downloads
+   # MediaPipe Tasks GenAI path (.task — web-optimized variant):
+   hf download litert-community/Gemma3-1B-IT gemma3-1b-it-int4-web.task --local-dir ~/Downloads
+   # Or, for a larger desktop test:
+   hf download litert-community/gemma-4-E2B-it-litert-lm gemma-4-E2B-it-web.task --local-dir ~/Downloads
    ```
 
 2. **Serve the page with COOP/COEP headers.** WASM threading needs
@@ -57,14 +64,54 @@ also verifies the web path of `expo-litert-lm` will work.
    delivers them straight from your filesystem into the WASM runtime, same
    origin, no fetch involved.
 
+## Verified status (2026-05-19 — Chrome on macOS, anti-scam prompt)
+
+`.task` path uses MediaPipe's streaming `ReadableStreamDefaultReader` rather
+than `File.arrayBuffer()`, so the JS-heap peak stays close to model **header
+overhead** instead of full model size.
+
+| Format | Model | Backend | Peak | TTFT | Decode | Result |
+|---|---|---|---|---|---|---|
+| `.litertlm` | Gemma 3 1B INT4 (557 MB) | CPU | 1676 MB | 33.2 s | 57 chars/s (≈ 14.3 tok/s) | ✅ Real streaming (467 chunks) |
+| `.litertlm` | Gemma 3 1B INT4 (557 MB) | WebGPU | 562 MB | — | — | ❌ Compile error in `llm_litert_compiled_model_executor.cc:1928` — model lacks WebGPU artifacts |
+| `.litertlm` | Gemma 4 E2B (2.4 GB) | both | 2455 MB | — | — | ❌ `Array buffer allocation failed` — exceeds 32-bit WASM linear memory cap |
+| `.task` | Gemma 3 1B INT4 web (668 MB) | GPU | **301 MB** | 95 ms | 468 chars/s (≈ 116.9 tok/s) | ✅✅ 54 chunks |
+| `.task` | Gemma 3 1B INT4 web (668 MB) | CPU | ~470 MB | 92 ms | 469 chars/s (≈ 117.2 tok/s) | ✅✅ 54 chunks |
+| `.task` | Gemma 4 E2B web (1.91 GB) | GPU | **231 MB** | 191 ms | 234 chars/s (≈ 58.5 tok/s) | ✅ 95 chunks (multilingual mixing in output) |
+| `.task` | Gemma 4 E2B web (1.91 GB) | CPU | **470 MB** | 143 ms | 233 chars/s (≈ 58.3 tok/s) | ✅ Same multilingual mixing |
+| `.task` | Gemma 4 E4B web (2.83 GB) | GPU | **424 MB** | 5.2 s | 16 chars/s (≈ 4.1 tok/s) | ⚠️ Loads but output is numeric gibberish — upstream MediaPipe doesn't fully support 4B Gemma in v0.10.27 |
+| `.task` | Gemma 4 E4B web (2.83 GB) | CPU | 382 MB | 272 ms | 10 chars/s (≈ 2.5 tok/s) | ⚠️ Same — output garbage |
+
+**Four things this matrix proves:**
+
+1. The dual-runtime architecture works — magic-byte sniff correctly routes `.litertlm` → `@litert-lm/core` and `.task` → `@mediapipe/tasks-genai`.
+2. For models that fit web's memory budget, **MediaPipe `.task` is ~8× faster than LiteRT-LM `.litertlm`** on the same Gemma 3 1B (117 tok/s vs 14 tok/s). Web defaults should prefer `.task`.
+3. **Streaming `ReadableStreamDefaultReader` is strictly better than `arrayBuffer()`** for the MediaPipe path: same output, same speed, ~10× lower JS heap (Gemma 4 E2B went from 1921 MB peak to 231 MB peak GPU / 470 MB peak CPU).
+4. **Gemma 4 E2B is fully viable on web via `.task`** — the same model that the LiteRT-LM path can't load runs at ~58 tok/s on either backend with very modest heap.
+
+**Known follow-ups (not blockers):**
+
+- **Multilingual mixing on Gemma 4 E2B output** — almost certainly missing Gemma 4 chat-turn template (`<start_of_turn>user\n...\n<end_of_turn>\n<start_of_turn>model\n`). Wrapper-side fix in a follow-up.
+- **Gemma 4 E4B output is gibberish** — even though the model loads (424 MB peak) and produces chunks, the output is numeric tokens not properly decoded. This is an upstream `@mediapipe/tasks-genai` limitation; v0.10.27 doesn't fully support 4B Gemma. File a tracking issue once a clean repro is isolated.
+
 ## What the page measures
 
 - **peak MB** — `performance.memory.usedJSHeapSize` peak during the run.
   Chromium only; Firefox / Safari report 0 (no comparable API).
 - **ttft** — wall time from `Engine.create()` completion to the first
   non-empty streaming chunk.
-- **tok/s** — `(streaming-chunk count) ÷ (time since first chunk)`. Rough
-  proxy for decode speed.
+- **total** — wall time from `Engine.create()` completion to the end of the
+  stream.
+- **chars** — total characters in the generated response.
+- **chars/s** — `chars ÷ total`. The `≈ N tok/s` shown alongside is a rough
+  approximation (English text averages ~4 chars per token); do **not** quote
+  it as a measured token rate.
+- **chunks** — how many separate streaming chunks the `ReadableStream`
+  delivered. Sometimes 1 (the whole response in a single chunk), sometimes
+  many — `@litert-lm/core`'s buffering strategy is the deciding factor and
+  is not under our control. We cannot measure decode rate separately from
+  prefill / buffering with the current API surface; that's why this page
+  does not display a `tok/s` figure as if it were measured precisely.
 
 ## Why the file picker instead of a URL?
 
@@ -84,6 +131,7 @@ from the user's filesystem to the WASM runtime.
 |---|---|
 | Page says "Not cross-origin isolated" | You bypassed `serve.mjs`. Use it, or set both `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` on your own server. |
 | Page says "No WebGPU" | Your browser does not expose `navigator.gpu`. Try Chrome / Edge 113+ or Safari 18+. |
-| Console: "RuntimeError: WebAssembly.Memory(): could not allocate memory" | Your tab does not have enough heap. Close other tabs, restart browser, or try a smaller model. |
+| "Array buffer allocation failed" / "RuntimeError: WebAssembly.Memory(): could not allocate memory" | Model is too large for the 32-bit WASM linear-memory budget. Try a smaller model — Gemma 3 1B INT4 (557 MB) works; Gemma 4 E2B (2.4 GB) does not currently fit. See the "Verified status" table above. |
+| WebGPU backend errors out with `llm_litert_compiled_model_executor.cc:...` | `@litert-lm/core` v0.12.0's WebGPU path doesn't compile this model variant. Toggle to CPU. See the "Verified status" table above. |
 | Output box shows red "Invalid magic number" after pick | The picked file is not a real `.litertlm`. Run `xxd <file> \| head -1` — real models start with `4c49 5445 5254 4c4d` (`LITERTLM`). HF "Access denied" pages from un-authed `curl` are a common cause; re-download with the `hf` CLI. |
 | Output stops after 1 token | WebGPU adapter crashed. Toggle to CPU backend and re-run. Check the browser's DevTools → Console. |

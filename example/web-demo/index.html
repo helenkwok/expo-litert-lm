@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>expo-litert-lm — Web smoke test (@litert-lm/core v0.12.0)</title>
+  <title>expo-litert-lm — Web smoke test</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
     h1 { font-size: 1.4rem; margin-bottom: 0.25rem; }
@@ -15,22 +15,26 @@
     button:disabled { opacity: 0.5; cursor: not-allowed; }
     #peak { font-size: 2rem; font-weight: 700; color: #003366; margin: 0.5rem 0; }
     #meta { color: #444; font-size: 0.9rem; }
+    #runtimeBadge { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: 600; }
+    .badge-litert { background: #d4edda; color: #155724; }
+    .badge-mp { background: #cce5ff; color: #004085; }
     #output { background: #f5f5f5; padding: 1rem; border-radius: 8px; margin-top: 1rem; font-family: Menlo, monospace; font-size: 0.85rem; white-space: pre-wrap; min-height: 100px; }
     .warn { background: #fff3cd; border: 1px solid #ffe69c; padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem; }
-    .err { color: #cc0000; margin-top: 0.5rem; }
+    .err { color: #cc0000; margin-top: 0.5rem; white-space: pre-wrap; font-family: Menlo, monospace; font-size: 0.85rem; }
   </style>
 </head>
 <body>
   <h1>expo-litert-lm — Web smoke test</h1>
-  <p class="sub">@litert-lm/core v0.12.0 · WebGPU + CPU</p>
+  <p class="sub">Routes <code>.litertlm</code> → <code>@litert-lm/core</code>, <code>.task</code> → <code>@mediapipe/tasks-genai</code> (same architecture as the iOS/Android module).</p>
 
   <div id="caps" class="warn">Checking environment&hellip;</div>
 
   <div class="row">
     <label for="modelFile">Model file:</label>
-    <input id="modelFile" type="file" accept=".litertlm,application/octet-stream" />
+    <input id="modelFile" type="file" accept=".litertlm,.task,application/octet-stream" />
   </div>
-  <div id="modelMeta" class="sub" style="margin: -0.25rem 0 0.75rem 120px;">(pick a .litertlm — Gemma 4 E2B or Gemma 3 1B INT4 from your filesystem)</div>
+  <div id="modelMeta" class="sub" style="margin: -0.25rem 0 0.75rem 120px;">(pick a .litertlm or .task — runtime auto-detected by magic bytes)</div>
+
   <div class="row">
     <label for="backend">Backend:</label>
     <select id="backend">
@@ -40,7 +44,7 @@
   </div>
   <div class="row">
     <label for="prompt">Prompt:</label>
-    <input id="prompt" type="text" value="Summarize in two sentences: stay calm, find shelter, call emergency services if safe, follow local instructions, and check on neighbors when conditions allow." />
+    <input id="prompt" type="text" value="Someone got a text message saying their bank account is locked and asking them to click a link to verify. List three signs this is a scam and what they should do instead." />
   </div>
 
   <div class="row">
@@ -49,40 +53,69 @@
   </div>
 
   <div id="peak">peak — MB</div>
-  <div id="meta">backend — · ttft — · — tok/s</div>
+  <div id="meta">pick a model file</div>
 
   <div id="output"></div>
   <div id="error" class="err"></div>
 
   <script type="module">
+    // Both upstream runtimes loaded from CDN ESM. The wrapper at
+    // src/ExpoLitertLmModule.web.ts uses dynamic `await import(...)` for the
+    // same packages; this page mirrors its routing logic inline so we can
+    // verify both paths without a bundler.
     import { Engine, Backend } from 'https://cdn.jsdelivr.net/npm/@litert-lm/core@0.12.0/+esm';
+    import { FilesetResolver, LlmInference }
+      from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai@0.10.27/genai_bundle.mjs';
 
     const $ = (id) => document.getElementById(id);
-    const capsEl = $('caps');
-    const runBtn = $('run');
+    const capsEl  = $('caps');
+    const runBtn  = $('run');
     const cancelBtn = $('cancel');
-    const peakEl = $('peak');
-    const metaEl = $('meta');
-    const outEl = $('output');
-    const errEl = $('error');
+    const peakEl  = $('peak');
+    const metaEl  = $('meta');
+    const outEl   = $('output');
+    const errEl   = $('error');
+    const modelMeta = $('modelMeta');
+    const fileInput = $('modelFile');
 
-    // Environment check — matches isLiteRtAvailable() in our web shim.
+    // ----- Environment check -----
     const hasGpu = 'gpu' in navigator;
     const isCOI = self.crossOriginIsolated === true;
     if (!hasGpu) {
       capsEl.innerHTML = '<strong>No WebGPU</strong> — your browser does not expose <code>navigator.gpu</code>. Chrome / Edge 113+ on supported GPUs, Safari 18+, or Firefox Nightly with WebGPU enabled.';
     } else if (!isCOI) {
-      capsEl.innerHTML = '<strong>Not cross-origin isolated</strong> — page must be served with COOP/COEP headers so SharedArrayBuffer is available (the WASM runtime needs threading). See <code>README.md</code> &rarr; Web setup.';
+      capsEl.innerHTML = '<strong>Not cross-origin isolated</strong> — page must be served with COOP/COEP headers so SharedArrayBuffer is available. Use the included <code>node serve.mjs</code>.';
     } else {
-      capsEl.innerHTML = 'WebGPU + crossOriginIsolated &check; — environment looks good. Pick a .litertlm model below.';
+      capsEl.innerHTML = 'WebGPU + crossOriginIsolated &check; — environment looks good. Pick a model below.';
       capsEl.style.background = '#d4edda';
       capsEl.style.borderColor = '#9fd4ad';
     }
 
-    // Enable Run only after a file is picked AND the environment is good.
+    // ----- Magic-byte sniff (mirrors src/ExpoLitertLmModule.web.ts sniffRuntime) -----
+    // - LITERTLM at offset 0  → @litert-lm/core
+    // - TFL3 at offset 4      → @mediapipe/tasks-genai  (recent .task: raw TFLite flatbuffer)
+    // - PK\x03\x04 at offset 0→ @mediapipe/tasks-genai  (legacy .task: ZIP archive)
+    async function sniffRuntime(file) {
+      const head = new Uint8Array(await file.slice(0, 16).arrayBuffer());
+      if (head.length >= 8 &&
+          head[0] === 0x4c && head[1] === 0x49 && head[2] === 0x54 && head[3] === 0x45 &&
+          head[4] === 0x52 && head[5] === 0x54 && head[6] === 0x4c && head[7] === 0x4d) {
+        return 'litert-lm';
+      }
+      if (head.length >= 8 &&
+          head[4] === 0x54 && head[5] === 0x46 && head[6] === 0x4c && head[7] === 0x33) {
+        return 'mediapipe';
+      }
+      if (head.length >= 4 &&
+          head[0] === 0x50 && head[1] === 0x4b && head[2] === 0x03 && head[3] === 0x04) {
+        return 'mediapipe';
+      }
+      const hex = Array.from(head).map((b) => b.toString(16).padStart(2, '0')).join(' ');
+      throw new Error(`Unrecognized model format. Expected LITERTLM, TFL3@4, or PK ZIP. First 16 bytes: ${hex}`);
+    }
+
+    // ----- File selection -----
     let pickedFile = null;
-    const fileInput = $('modelFile');
-    const modelMeta = $('modelMeta');
     fileInput.addEventListener('change', () => {
       pickedFile = fileInput.files?.[0] ?? null;
       if (pickedFile) {
@@ -90,18 +123,12 @@
         modelMeta.textContent = `${pickedFile.name} · ${mb} MB`;
         runBtn.disabled = !(hasGpu && isCOI);
       } else {
-        modelMeta.textContent = '(pick a .litertlm — Gemma 4 E2B or Gemma 3 1B INT4 from your filesystem)';
+        modelMeta.textContent = '(pick a .litertlm or .task — runtime auto-detected by magic bytes)';
         runBtn.disabled = true;
       }
     });
 
-    let activeConversation = null;
-    let activeEngine = null;
-
-    cancelBtn.onclick = () => {
-      try { activeConversation?.cancel(); } catch (e) { /* no-op */ }
-    };
-
+    // ----- Memory polling -----
     let peakMb = 0;
     const samplePerf = () => {
       const mb = (performance?.memory?.usedJSHeapSize ?? 0) / 1024 / 1024;
@@ -109,9 +136,30 @@
       peakEl.textContent = `peak ${peakMb.toFixed(1)} MB`;
     };
 
+    // ----- Active-generation state (for cancel) -----
+    let activeRuntime = null;
+    let activeLitertEngine = null;
+    let activeLitertConversation = null;
+    let activeMpLlm = null;
+    let generationCounter = 0;
+
+    async function cleanupActive() {
+      if (activeLitertConversation) { try { await activeLitertConversation.delete(); } catch {} activeLitertConversation = null; }
+      if (activeLitertEngine) { try { await activeLitertEngine.delete(); } catch {} activeLitertEngine = null; }
+      if (activeMpLlm) { try { activeMpLlm.close(); } catch {} activeMpLlm = null; }
+      activeRuntime = null;
+    }
+
+    cancelBtn.onclick = () => {
+      generationCounter++; // invalidate any in-flight loop
+      try { activeLitertConversation?.cancel(); } catch {}
+      // MediaPipe LlmInference has no runtime cancel — gate by generationCounter.
+    };
+
+    // ----- Run -----
     runBtn.onclick = async () => {
       if (!pickedFile) {
-        errEl.textContent = 'Pick a .litertlm file first.';
+        errEl.textContent = 'Pick a model file first.';
         return;
       }
       runBtn.disabled = true;
@@ -119,51 +167,102 @@
       outEl.textContent = '';
       errEl.textContent = '';
       peakMb = 0;
-      const backend = $('backend').value === 'cpu' ? Backend.CPU : Backend.GPU;
-      const prompt = $('prompt').value;
+      const backend = $('backend').value;
+      const prompt  = $('prompt').value;
       const pollHandle = setInterval(samplePerf, 250);
-      let firstTokenAt = null;
-      let tokenCount = 0;
+      let firstChunkAt = null;
+      let chunkCount = 0;
+      let charCount = 0;
+      const myGen = ++generationCounter;
+      let runtimeChoice = '?';
+
       try {
-        // Clean up any prior run.
-        if (activeConversation) { try { await activeConversation.delete(); } catch {} activeConversation = null; }
-        if (activeEngine) { try { await activeEngine.delete(); } catch {} activeEngine = null; }
-        metaEl.textContent = 'loading model…';
-        // File.stream() returns a ReadableStream<Uint8Array>, which is one of
-        // the accepted shapes for EngineSettings.model. No URL / network /
-        // CORS / COOP-CORP coordination needed — the bytes come straight from
-        // the user's filesystem via the picker.
-        activeEngine = await Engine.create({ model: pickedFile.stream(), backend });
-        activeConversation = await activeEngine.createConversation();
-        const tAfterLoad = performance.now();
-        const stream = activeConversation.sendMessageStreaming(prompt);
-        const reader = stream.getReader();
-        try {
-          while (true) {
-            const { value: chunk, done } = await reader.read();
-            if (done) break;
-            const delta = (chunk?.content ?? [])
-              .filter((c) => c.type === 'text' && typeof c.text === 'string')
-              .map((c) => c.text)
-              .join('');
-            if (delta) {
-              if (firstTokenAt === null) firstTokenAt = performance.now();
-              tokenCount++;
-              outEl.textContent += delta;
+        await cleanupActive();
+        metaEl.innerHTML = 'sniffing model…';
+        runtimeChoice = await sniffRuntime(pickedFile);
+        const badge = runtimeChoice === 'litert-lm'
+          ? '<span id="runtimeBadge" class="badge-litert">@litert-lm/core</span>'
+          : '<span id="runtimeBadge" class="badge-mp">@mediapipe/tasks-genai</span>';
+        metaEl.innerHTML = `${badge} · loading model…`;
+
+        // ---- LiteRT-LM path ----
+        if (runtimeChoice === 'litert-lm') {
+          const be = backend === 'cpu' ? Backend.CPU : Backend.GPU;
+          activeLitertEngine = await Engine.create({ model: pickedFile.stream(), backend: be });
+          activeLitertConversation = await activeLitertEngine.createConversation();
+          activeRuntime = 'litert-lm';
+
+          const tAfterLoad = performance.now();
+          metaEl.innerHTML = `${badge} · generating…`;
+          const stream = activeLitertConversation.sendMessageStreaming(prompt);
+          const reader = stream.getReader();
+          try {
+            while (true) {
+              const { value: chunk, done } = await reader.read();
+              if (done) break;
+              if (myGen !== generationCounter) throw new Error('cancelled');
+              const delta = (chunk?.content ?? [])
+                .filter((c) => c.type === 'text' && typeof c.text === 'string')
+                .map((c) => c.text)
+                .join('');
+              if (delta) {
+                if (firstChunkAt === null) firstChunkAt = performance.now();
+                chunkCount++;
+                charCount += delta.length;
+                outEl.textContent += delta;
+              }
             }
+          } finally {
+            reader.releaseLock();
           }
-        } finally {
-          reader.releaseLock();
+          renderMetrics({ badge, backend, tAfterLoad, firstChunkAt, chunkCount, charCount });
         }
-        const tEnd = performance.now();
-        const ttftMs = firstTokenAt ? Math.round(firstTokenAt - tAfterLoad) : null;
-        const decodeMs = firstTokenAt ? tEnd - firstTokenAt : null;
-        const tokPerSec = decodeMs && tokenCount > 1 ? (tokenCount / (decodeMs / 1000)) : null;
-        metaEl.textContent = `backend ${$('backend').value.toUpperCase()}` +
-          (ttftMs !== null ? ` · ttft ${ttftMs} ms` : '') +
-          (tokPerSec !== null ? ` · ${tokPerSec.toFixed(1)} tok/s` : '');
+
+        // ---- MediaPipe Tasks GenAI path ----
+        else {
+          const wasmFileset = await FilesetResolver.forGenAiTasks(
+            'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai@0.10.27/wasm'
+          );
+          // Use a ReadableStream reader instead of arrayBuffer() so we don't
+          // allocate the entire file in JS heap. `File.arrayBuffer()` chokes
+          // on multi-GB files; `file.stream().getReader()` lets MediaPipe
+          // pull bytes in chunks.
+          const reader = pickedFile.stream().getReader();
+          const llm = await LlmInference.createFromOptions(wasmFileset, {
+            baseOptions: { modelAssetBuffer: reader, delegate: backend === 'cpu' ? 'CPU' : 'GPU' },
+            maxTokens: 320, topK: 40, temperature: 0.7,
+          });
+          activeMpLlm = llm;
+          activeRuntime = 'mediapipe';
+
+          const tAfterLoad = performance.now();
+          metaEl.innerHTML = `${badge} · generating…`;
+          // generateResponse(prompt, listener) returns Promise<string> with the
+          // full response. The listener is called for streaming chunks when
+          // streaming is supported. Some MediaPipe builds only fire the
+          // listener once with (fullText, done=true) — i.e. no real streaming.
+          // Capture both: progressive chunks via the listener, fall back to
+          // the awaited result if no chunks were observed.
+          const fullText = await llm.generateResponse(prompt, (partial, done) => {
+            if (myGen !== generationCounter) return;
+            if (partial && partial.length > 0) {
+              if (firstChunkAt === null) firstChunkAt = performance.now();
+              chunkCount++;
+              charCount += partial.length;
+              outEl.textContent += partial;
+            }
+          });
+          if (charCount === 0 && typeof fullText === 'string' && fullText.length > 0) {
+            // No streaming — treat the final return as a single "chunk".
+            firstChunkAt = performance.now();
+            chunkCount = 1;
+            charCount = fullText.length;
+            outEl.textContent = fullText;
+          }
+          renderMetrics({ badge, backend, tAfterLoad, firstChunkAt, chunkCount, charCount });
+        }
       } catch (e) {
-        errEl.textContent = e?.message ?? String(e);
+        errEl.textContent = e?.stack || e?.message || String(e);
       } finally {
         clearInterval(pollHandle);
         samplePerf();
@@ -171,6 +270,23 @@
         cancelBtn.disabled = true;
       }
     };
+
+    function renderMetrics({ badge, backend, tAfterLoad, firstChunkAt, chunkCount, charCount }) {
+      const tEnd = performance.now();
+      const ttftMs = firstChunkAt ? Math.round(firstChunkAt - tAfterLoad) : null;
+      const totalMs = Math.round(tEnd - tAfterLoad);
+      const charsPerSec = totalMs > 0 && charCount > 0 ? (charCount / (totalMs / 1000)) : null;
+      const ttftStr = ttftMs !== null ? `${ttftMs} ms` : '—';
+      const cpsStr = charsPerSec !== null
+        ? `${charsPerSec.toFixed(0)} chars/s (≈ ${(charsPerSec / 4).toFixed(1)} tok/s)`
+        : '—';
+      metaEl.innerHTML =
+        `${badge} · backend ${backend.toUpperCase()}` +
+        ` · ttft ${ttftStr}` +
+        ` · total ${totalMs} ms · ${charCount} chars` +
+        ` · ${cpsStr}` +
+        ` · ${chunkCount} chunks`;
+    }
   </script>
 </body>
 </html>

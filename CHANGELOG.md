@@ -30,8 +30,46 @@
   `src/ExpoLitertLmModule.web.ts` shim. WebGPU + cross-origin-isolation
   required. New `example/web-demo/` provides a zero-dependency Node ESM static
   server with the COOP/COEP headers SharedArrayBuffer needs, plus an HTML
-  page that exercises the underlying `@litert-lm/core` package end-to-end.
+  page that exercises the underlying `@litert-lm/core` package end-to-end via
+  a file picker (no fetch / no symlink / no CORS coordination).
   Audio / multimodal stubbed (parallel to iOS spike scope).
+- **Dual-runtime web support:** added `@mediapipe/tasks-genai` as a second
+  optional peer dep (alongside `@litert-lm/core`) to mirror native's
+  LiteRT-LM-default-with-MediaPipe-fallback architecture. Routing is by
+  magic-byte sniff on the picked file: `LITERTLM` at offset 0 → `@litert-lm/core`;
+  `TFL3` at offset 4 (TFLite flatbuffer) OR `PK\x03\x04` at offset 0 (legacy
+  ZIP) → `@mediapipe/tasks-genai`. Each runtime is lazy-imported only when
+  its format is requested. Same `loadModelAsync` / `generateResponseAsync`
+  / `onToken` event shape on both paths.
+- **Web verified status (2026-05-19, Chrome on macOS):**
+  - `.litertlm` + CPU works end-to-end on Gemma 3 1B INT4 (557 MB) — peak
+    1676 MB, 14.3 tok/s, real per-chunk streaming.
+  - `.litertlm` + WebGPU fails on Gemma 3 1B INT4 (compile error in
+    `llm_litert_compiled_model_executor.cc`) — the LiteRT-LM web build doesn't
+    have WebGPU artifacts for this model variant.
+  - `.litertlm` Gemma 4 E2B (2.4 GB) fails on both backends with
+    `Array buffer allocation failed` — exceeds 32-bit WASM 4 GB cap.
+  - `.task` + GPU and CPU both work on Gemma 3 1B INT4 web (668 MB) at
+    ~117 tok/s and ~86 ms TTFT — substantially faster than the LiteRT-LM
+    path on the same-tier model.
+  - `.task` + both backends work on Gemma 4 E2B web (1.91 GB) at ~58 tok/s —
+    the same Gemma 4 E2B model that fails on `.litertlm` runs cleanly on the
+    `.task` path. With streaming `ReadableStreamDefaultReader` (added below),
+    JS-heap peak is 231 MB GPU / 470 MB CPU — much smaller than the model
+    itself because MediaPipe streams chunks straight into WASM. Output
+    exhibits multilingual mixing (English/Chinese/Thai) that's likely a
+    missing chat-turn template, not a wrapper bug.
+  - `.task` Gemma 4 E4B web (2.83 GB) loads (peak 424 MB GPU / 382 MB CPU)
+    but output is numeric gibberish — `@mediapipe/tasks-genai` v0.10.27
+    doesn't fully support 4B Gemma in this build. File loads, weights stream
+    in, inference runs, but tokenizer/decoder fails. Upstream limit.
+- **Model bytes streamed to MediaPipe via `ReadableStreamDefaultReader`** —
+  not `Uint8Array`. `File.arrayBuffer()` / `Response.arrayBuffer()` choke
+  on 2.8 GB+ files in current browsers; the stream reader lets MediaPipe
+  pull chunks straight into WASM linear memory without holding the whole
+  model in JS heap. Verified: Gemma 4 E2B peak went from 1921 MB
+  (arrayBuffer) to 231 MB GPU / 470 MB CPU (stream reader) with identical
+  output and decode rate.
 - **API port:** `LiteRTLMEngine(modelPath:backend:textOnly:)` →
   `Engine(EngineConfig)`; `engine.load()` async → `engine.initialize()` on
   the actor; `engine.generateStreaming()` → `engine.createConversation()` +

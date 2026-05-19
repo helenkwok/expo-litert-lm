@@ -1,7 +1,7 @@
 {
   "name": "expo-litert-lm",
   "version": "0.2.0-rc.0",
-  "description": "Expo Modules bindings for on-device LLM inference. Android: Google's litert-lm-android (LiteRT-LM Engine + MediaPipe Tasks GenAI). iOS: Google's first-party LiteRT-LM Swift APIs (v0.12.0+) with Metal GPU acceleration; MediaPipe Tasks GenAI available as opt-in MediaPipeFallback subspec. Web: Google's @litert-lm/core (WebGPU/CPU) — opt-in peer dep. Supports .litertlm and .task model formats.",
+  "description": "Expo Modules bindings for on-device LLM inference. Android: Google's litert-lm-android (LiteRT-LM Engine + MediaPipe Tasks GenAI). iOS: Google's first-party LiteRT-LM Swift APIs (v0.12.0+) with Metal GPU acceleration; MediaPipe Tasks GenAI available as opt-in MediaPipeFallback subspec. Web: Google's @litert-lm/core for .litertlm (WebGPU/CPU) + @mediapipe/tasks-genai for .task — both opt-in peer deps. Supports .litertlm and .task model formats.",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "scripts": {
@@ -51,6 +51,7 @@
   "homepage": "https://github.com/helenkwok/expo-litert-lm#readme",
   "peerDependencies": {
     "@litert-lm/core": ">=0.12.0",
+    "@mediapipe/tasks-genai": ">=0.10.27",
     "expo": ">=55.0.0",
     "expo-modules-core": ">=2.0.0",
     "react": ">=18.0.0",
@@ -59,10 +60,14 @@
   "peerDependenciesMeta": {
     "@litert-lm/core": {
       "optional": true
+    },
+    "@mediapipe/tasks-genai": {
+      "optional": true
     }
   },
   "devDependencies": {
     "@litert-lm/core": "^0.12.0",
+    "@mediapipe/tasks-genai": "^0.10.27",
     "@types/react": "^19.0.0",
     "expo-modules-core": "^3.0.0",
     "react-native": "^0.83.0",
